@@ -1,0 +1,54 @@
+name: hPlaytime
+version: '1.0-SNAPSHOT'
+
+main: com.hboj.hPlaytime.HPlaytime
+api-version: '1.21.11'
+load: POSTWORLD
+
+authors: [ hboj ]
+website: https://hobojoe.dev/
+
+commands:
+  playtime:
+    description: Shows playtime tracked by hPlaytime.
+    usage: /playtime [player]
+    aliases: [ pt ]
+    permission: hplaytime.use
+  hplaytime:
+    description: Admin commands for hPlaytime.
+    usage: /hplaytime reload
+  event:
+    description: hPlaytime event commands.
+    usage: /event <create|start|end|delete|list>
+
+permissions:
+  hplaytime.use:
+    description: Allows checking your own hPlaytime.
+    default: true
+  hplaytime.others:
+    description: Allows checking another player's hPlaytime.
+    default: op
+  hplaytime.reload:
+    description: Allows reloading hPlaytime language messages.
+    default: op
+  hplaytime.reset:
+    description: Allows resetting one player's main playtime.
+    default: op
+  hplaytime.resetall:
+    description: Allows resetting all main playtime data.
+    default: op
+  hplaytime.event.create:
+    description: Allows creating playtime events.
+    default: op
+  hplaytime.event.start:
+    description: Allows starting playtime events.
+    default: op
+  hplaytime.event.end:
+    description: Allows manually ending playtime events.
+    default: op
+  hplaytime.event.delete:
+    description: Allows deleting playtime event tracking files.
+    default: op
+  hplaytime.event.list:
+    description: Allows listing playtime events.
+    default: op

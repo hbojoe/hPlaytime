@@ -1,0 +1,38 @@
+prefix: "&8[&ahPlaytime&8] &r"
+no-permission: "&cYou do not have permission to do that."
+player-only: "&cOnly players can use that command without a player name."
+usage-playtime: "&cUsage: /playtime [player]"
+usage-admin: "&cUsage: /hplaytime reload, /hplaytime reset <player>, or /hplaytime resetall"
+usage-event: "&cUsage: /playtime event create <name> <duration>, /playtime start <name>, /event delete <name>"
+unknown-player: "&cNo playtime data was found for &f%player%&c."
+reloaded: "&aLanguage file reloaded."
+reload-failed: "&cReload failed. Check the console for details."
+reset-player: "&aReset main playtime for &f%player%&a."
+reset-failed: "&cCould not reset main playtime for &f%player%&c. Check the console."
+reset-all: "&aReset main playtime for all players."
+reset-all-failed: "&cCould not reset all main playtime. Check the console."
+
+event-created: "&aCreated event &f%event% &afor &f%duration%&a. Start it with &f/playtime start %event%&a."
+event-invalid-name: "&cEvent names may only use letters, numbers, underscores, and hyphens, up to 32 characters."
+event-invalid-duration: "&cInvalid duration. Examples: 24h, 7d, 1h30m, 45m."
+event-already-exists: "&cEvent &f%event% &calready exists."
+event-not-found: "&cEvent &f%event% &cdoes not exist."
+event-already-active: "&cEvent &f%event% &cis already active."
+event-not-active: "&cEvent &f%event% &cis not active."
+event-started: "&aStarted event &f%event%&a. Event playtime starts fresh now."
+event-ended-manual: "&aEnded event &f%event%&a and wrote an event log."
+event-deleted: "&aDeleted event &f%event%&a tracking files. Existing event logs were kept."
+event-list: "&aEvents: &f%events%"
+
+event-ended:
+  - "&aEvent &f%event% &ahas ended!"
+  - "&7Highest playtime: &f%player% &7with &f%time%"
+event-ended-no-players:
+  - "&aEvent &f%event% &ahas ended!"
+  - "&7No playtime was tracked for this event."
+
+playtime:
+  - "&aPlaytime for &f%player%&a:"
+  - "&7Today: &f%today%"
+  - "&7This month: &f%month%"
+  - "&7All time: &f%alltime%"
