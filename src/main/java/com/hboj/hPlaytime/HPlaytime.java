@@ -1,5 +1,6 @@
 package com.hboj.hPlaytime;
 
+import java.io.File;
 import java.util.Objects;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -13,7 +14,7 @@ public final class HPlaytime extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        saveResource("lang.yml", false);
+        saveDefaultLang();
 
         try {
             lang = new Lang(this);
@@ -75,5 +76,12 @@ public final class HPlaytime extends JavaPlugin {
             settings.flushIntervalTicks(),
             settings.flushIntervalTicks()
         );
+    }
+
+    private void saveDefaultLang() {
+        File langFile = new File(getDataFolder(), "lang.yml");
+        if (!langFile.exists()) {
+            saveResource("lang.yml", false);
+        }
     }
 }

@@ -102,12 +102,36 @@ public final class PlaytimeManager {
         }
     }
 
+    public List<PlaytimeLeaderboardEntry> getTopDay(int limit) {
+        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
+        return getTop("daily", settings.dailyFormatter().format(now), limit);
+    }
+
+    public List<PlaytimeLeaderboardEntry> getTopMonth(int limit) {
+        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
+        return getTop("monthly", settings.monthlyFormatter().format(now), limit);
+    }
+
+    public List<PlaytimeLeaderboardEntry> getTopAllTime(int limit) {
+        return getTop("alltime", "all", limit);
+    }
+
     public Optional<StoredPlayer> findStoredPlayer(String playerName) {
         try {
             return storage.findByName(playerName);
         } catch (Exception exception) {
             plugin.getLogger().log(Level.SEVERE, "Could not search playtime data for " + playerName, exception);
             return Optional.empty();
+        }
+    }
+
+    private List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) {
+        flushOnlinePlayers();
+        try {
+            return storage.getTop(periodType, periodKey, limit);
+        } catch (Exception exception) {
+            plugin.getLogger().log(Level.SEVERE, "Could not load playtime leaderboard.", exception);
+            return List.of();
         }
     }
 

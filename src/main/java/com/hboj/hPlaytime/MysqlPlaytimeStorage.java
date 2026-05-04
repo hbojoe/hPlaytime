@@ -5,6 +5,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -128,6 +129,35 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
                 getPeriodMillis(connection, uuid, "alltime", ALLTIME_PERIOD),
                 lastSeenMillis
             );
+        }
+    }
+
+    @Override
+    public List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                 "SELECT pt.uuid, p.name, pt.millis FROM " + playtimeTable + " pt "
+                     + "LEFT JOIN " + playersTable + " p ON p.uuid = pt.uuid "
+                     + "WHERE pt.period_type = ? AND pt.period_key = ? AND pt.millis > 0 "
+                     + "ORDER BY pt.millis DESC LIMIT ?"
+             )) {
+            statement.setString(1, periodType);
+            statement.setString(2, periodKey);
+            statement.setInt(3, limit);
+
+            List<PlaytimeLeaderboardEntry> entries = new ArrayList<>();
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String uuid = resultSet.getString("uuid");
+                    String name = resultSet.getString("name");
+                    entries.add(new PlaytimeLeaderboardEntry(
+                        UUID.fromString(uuid),
+                        name == null ? uuid : name,
+                        resultSet.getLong("millis")
+                    ));
+                }
+            }
+            return entries;
         }
     }
 

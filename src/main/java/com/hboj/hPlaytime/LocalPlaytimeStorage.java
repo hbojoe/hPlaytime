@@ -2,6 +2,8 @@ package com.hboj.hPlaytime;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -70,6 +72,34 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
             data.getLong("alltime-millis", 0L),
             data.getLong("last-seen-millis", 0L)
         );
+    }
+
+    @Override
+    public List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) {
+        File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
+        if (files == null) {
+            return List.of();
+        }
+
+        List<PlaytimeLeaderboardEntry> entries = new ArrayList<>();
+        for (File file : files) {
+            YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
+            String storedUuid = data.getString("uuid");
+            String storedName = data.getString("name", storedUuid);
+            long millis = getPeriodMillis(data, periodType, periodKey);
+            if (storedUuid != null && millis > 0L) {
+                try {
+                    entries.add(new PlaytimeLeaderboardEntry(UUID.fromString(storedUuid), storedName, millis));
+                } catch (IllegalArgumentException ignored) {
+                    // Ignore malformed data files so one bad record does not break the full leaderboard.
+                }
+            }
+        }
+
+        return entries.stream()
+            .sorted(Comparator.comparingLong(PlaytimeLeaderboardEntry::millis).reversed())
+            .limit(limit)
+            .toList();
     }
 
     @Override
@@ -146,6 +176,15 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
 
     private void savePlayerData(UUID uuid, YamlConfiguration data) throws IOException {
         data.save(playerDataFile(uuid));
+    }
+
+    private long getPeriodMillis(YamlConfiguration data, String periodType, String periodKey) {
+        return switch (periodType) {
+            case "daily" -> data.getLong("daily." + periodKey, 0L);
+            case "monthly" -> data.getLong("monthly." + periodKey, 0L);
+            case "alltime" -> data.getLong("alltime-millis", 0L);
+            default -> 0L;
+        };
     }
 
     private File playerDataFile(UUID uuid) {

@@ -18,6 +18,7 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
     private final PlaytimeManager playtimeManager;
     private final EventManager eventManager;
     private final Lang lang;
+    private static final int LEADERBOARD_LIMIT = 10;
 
     public PlaytimeCommand(HPlaytime plugin, PlaytimeManager playtimeManager, Lang lang) {
         this.plugin = plugin;
@@ -46,7 +47,6 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
-            plugin.saveResource("lang.yml", false);
             lang.reload();
             try {
                 PluginSettings settings = PluginSettings.load(plugin);
@@ -92,6 +92,21 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
 
         if (args[0].equalsIgnoreCase("event")) {
             return handleEventCommand(sender, copyArgs(args, 1));
+        }
+
+        if (args.length == 1 && args[0].equalsIgnoreCase("top")) {
+            sendLeaderboard(sender, "All Time", playtimeManager.getTopAllTime(LEADERBOARD_LIMIT));
+            return true;
+        }
+
+        if (args.length == 1 && args[0].equalsIgnoreCase("topday")) {
+            sendLeaderboard(sender, "Today", playtimeManager.getTopDay(LEADERBOARD_LIMIT));
+            return true;
+        }
+
+        if (args.length == 1 && args[0].equalsIgnoreCase("topmonth")) {
+            sendLeaderboard(sender, "This Month", playtimeManager.getTopMonth(LEADERBOARD_LIMIT));
+            return true;
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("start")) {
@@ -281,6 +296,24 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void sendLeaderboard(CommandSender sender, String period, List<PlaytimeLeaderboardEntry> entries) {
+        lang.send(sender, "leaderboard-header", Map.of("period", period));
+        if (entries.isEmpty()) {
+            lang.send(sender, "leaderboard-empty", Map.of("period", period));
+            return;
+        }
+
+        for (int index = 0; index < entries.size(); index++) {
+            PlaytimeLeaderboardEntry entry = entries.get(index);
+            lang.send(sender, "leaderboard-entry", Map.of(
+                "rank", Integer.toString(index + 1),
+                "player", entry.playerName(),
+                "time", TimeFormatter.format(entry.millis(), playtimeManager.timeFormatterSettings()),
+                "period", period
+            ));
+        }
+    }
+
     private String lastSeenText(UUID targetUuid, PlaytimeSnapshot snapshot) {
         if (plugin.getServer().getPlayer(targetUuid) != null) {
             return "online now";
@@ -310,6 +343,9 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             List<String> values = new ArrayList<>();
+            values.add("top");
+            values.add("topday");
+            values.add("topmonth");
             if (sender.hasPermission("hplaytime.others")) {
                 values.addAll(plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList());
             }

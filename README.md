@@ -74,6 +74,9 @@ Important files and folders:
 | `/playtime` | Shows your own playtime |
 | `/pt` | Alias for `/playtime` |
 | `/playtime <player>` | Shows another player's playtime |
+| `/playtime top` | Shows the top 10 all-time playtime leaderboard |
+| `/playtime topday` | Shows the top 10 daily playtime leaderboard |
+| `/playtime topmonth` | Shows the top 10 monthly playtime leaderboard |
 
 ### Admin
 

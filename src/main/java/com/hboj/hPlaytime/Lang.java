@@ -11,7 +11,10 @@ import org.bukkit.configuration.file.YamlConfiguration;
 public final class Lang {
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
     private static final Map<String, String> DEFAULT_MESSAGES = Map.of(
-        "playtime-last-seen", "&7Last seen: &f%lastseen%"
+        "playtime-last-seen", "&7Last seen: &f%lastseen%",
+        "leaderboard-header", "&aTop 10 Playtime - &f%period%",
+        "leaderboard-entry", "&7#%rank% &f%player% &8- &a%time%",
+        "leaderboard-empty", "&7No playtime has been tracked for &f%period%&7 yet."
     );
 
     private final HPlaytime plugin;

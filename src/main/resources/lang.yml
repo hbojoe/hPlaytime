@@ -1,7 +1,7 @@
 prefix: "&8[&ahPlaytime&8] &r"
 no-permission: "&cYou do not have permission to do that."
 player-only: "&cOnly players can use that command without a player name."
-usage-playtime: "&cUsage: /playtime [player]"
+usage-playtime: "&cUsage: /playtime [player], /playtime top, /playtime topday, or /playtime topmonth"
 usage-admin: "&cUsage: /hplaytime reload, /hplaytime reset <player>, or /hplaytime resetall"
 usage-event: "&cUsage: /playtime event create <name> <duration>, /playtime start <name>, /event delete <name>"
 unknown-player: "&cNo playtime data was found for &f%player%&c."
@@ -37,3 +37,7 @@ playtime:
   - "&7This month: &f%month%"
   - "&7All time: &f%alltime%"
 playtime-last-seen: "&7Last seen: &f%lastseen%"
+
+leaderboard-header: "&aTop 10 Playtime - &f%period%"
+leaderboard-entry: "&7#%rank% &f%player% &8- &a%time%"
+leaderboard-empty: "&7No playtime has been tracked for &f%period%&7 yet."
