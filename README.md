@@ -30,7 +30,7 @@ It includes its own data files, language file, config, AFK safety, optional MySQ
 
 ## Requirements
 
-- Paper server
+- Paper server 1.21.10 or 1.21.11
 - Java 21
 
 MySQL is optional. hPlaytime uses local YAML storage by default.
