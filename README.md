@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Plugin Banner">
+</p>
+
 # hPlaytime
 
 A standalone Paper plugin for tracking Minecraft playtime without relying on Essentials or any other playtime plugin.
