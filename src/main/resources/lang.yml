@@ -36,3 +36,4 @@ playtime:
   - "&7Today: &f%today%"
   - "&7This month: &f%month%"
   - "&7All time: &f%alltime%"
+playtime-last-seen: "&7Last seen: &f%lastseen%"

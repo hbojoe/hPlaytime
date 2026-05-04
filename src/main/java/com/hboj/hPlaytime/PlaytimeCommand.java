@@ -80,6 +80,16 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        if (args.length == 0) {
+            if (!(sender instanceof Player player)) {
+                lang.send(sender, "player-only");
+                return true;
+            }
+
+            sendPlaytime(sender, player.getUniqueId(), player.getName());
+            return true;
+        }
+
         if (args[0].equalsIgnoreCase("event")) {
             return handleEventCommand(sender, copyArgs(args, 1));
         }
@@ -94,16 +104,6 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1 && args[0].equalsIgnoreCase("resetall")) {
             return resetAll(sender);
-        }
-
-        if (args.length == 0) {
-            if (!(sender instanceof Player player)) {
-                lang.send(sender, "player-only");
-                return true;
-            }
-
-            sendPlaytime(sender, player.getUniqueId(), player.getName());
-            return true;
         }
 
         if (args.length != 1) {
@@ -272,6 +272,23 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             "month", TimeFormatter.format(snapshot.monthMillis(), playtimeManager.timeFormatterSettings()),
             "alltime", TimeFormatter.format(snapshot.alltimeMillis(), playtimeManager.timeFormatterSettings())
         ));
+
+        if (playtimeManager.lastSeenEnabled()) {
+            lang.send(sender, "playtime-last-seen", Map.of(
+                "player", playerName,
+                "lastseen", lastSeenText(targetUuid, snapshot)
+            ));
+        }
+    }
+
+    private String lastSeenText(UUID targetUuid, PlaytimeSnapshot snapshot) {
+        if (plugin.getServer().getPlayer(targetUuid) != null) {
+            return "online now";
+        }
+        if (snapshot.lastSeenMillis() <= 0L) {
+            return "unknown";
+        }
+        return playtimeManager.formatLastSeen(snapshot.lastSeenMillis());
     }
 
     @Override

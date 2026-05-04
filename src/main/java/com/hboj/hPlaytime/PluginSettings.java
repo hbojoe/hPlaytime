@@ -19,6 +19,8 @@ public final class PluginSettings {
     private final long afkTimeoutMillis;
     private final Set<String> afkWorlds;
     private final long flushIntervalTicks;
+    private final boolean lastSeenEnabled;
+    private final DateTimeFormatter lastSeenFormatter;
 
     private PluginSettings(
         StorageType storageType,
@@ -30,7 +32,9 @@ public final class PluginSettings {
         boolean afkEnabled,
         long afkTimeoutMillis,
         Set<String> afkWorlds,
-        long flushIntervalTicks
+        long flushIntervalTicks,
+        boolean lastSeenEnabled,
+        DateTimeFormatter lastSeenFormatter
     ) {
         this.storageType = storageType;
         this.mysqlSettings = mysqlSettings;
@@ -42,6 +46,8 @@ public final class PluginSettings {
         this.afkTimeoutMillis = afkTimeoutMillis;
         this.afkWorlds = afkWorlds;
         this.flushIntervalTicks = flushIntervalTicks;
+        this.lastSeenEnabled = lastSeenEnabled;
+        this.lastSeenFormatter = lastSeenFormatter;
     }
 
     public static PluginSettings load(HPlaytime plugin) {
@@ -67,6 +73,11 @@ public final class PluginSettings {
             .collect(Collectors.toUnmodifiableSet());
 
         long flushIntervalTicks = Math.max(10L, plugin.getConfig().getLong("flush-interval-seconds", 60L) * 20L);
+        boolean lastSeenEnabled = plugin.getConfig().getBoolean("last-seen.enabled", true);
+        DateTimeFormatter lastSeenFormatter = DateTimeFormatter.ofPattern(
+            plugin.getConfig().getString("last-seen.pattern", "yyyy-MM-dd HH:mm:ss z"),
+            Locale.US
+        );
 
         return new PluginSettings(
             storageType,
@@ -78,7 +89,9 @@ public final class PluginSettings {
             afkEnabled,
             afkTimeoutMillis,
             afkWorlds,
-            flushIntervalTicks
+            flushIntervalTicks,
+            lastSeenEnabled,
+            lastSeenFormatter
         );
     }
 
@@ -132,6 +145,14 @@ public final class PluginSettings {
 
     public long flushIntervalTicks() {
         return flushIntervalTicks;
+    }
+
+    public boolean lastSeenEnabled() {
+        return lastSeenEnabled;
+    }
+
+    public DateTimeFormatter lastSeenFormatter() {
+        return lastSeenFormatter;
     }
 
     public enum StorageType {

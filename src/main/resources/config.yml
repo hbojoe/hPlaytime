@@ -39,6 +39,11 @@ time-format:
     second: second
     seconds: seconds
 
+last-seen:
+  # Show a Last seen line in /playtime output.
+  enabled: true
+  pattern: yyyy-MM-dd HH:mm:ss z
+
 afk:
   enabled: true
   timeout-seconds: 300

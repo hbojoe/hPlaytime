@@ -7,6 +7,7 @@ public record PlaytimeSnapshot(
     String playerName,
     long todayMillis,
     long monthMillis,
-    long alltimeMillis
+    long alltimeMillis,
+    long lastSeenMillis
 ) {
 }

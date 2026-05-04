@@ -16,6 +16,7 @@ It includes its own data files, language file, config, AFK safety, optional MySQ
 - Independent playtime tracking
 - Local YAML or MySQL storage
 - Daily, monthly, and all-time totals
+- Optional last-seen display in `/playtime`
 - Configurable date and time formatting
 - Built-in AFK safety
 - AFK worlds where no playtime is counted
@@ -198,6 +199,14 @@ Long output example:
 1 day 4 hours 22 minutes
 ```
 
+Last-seen output can be disabled or reformatted:
+
+```yaml
+last-seen:
+  enabled: true
+  pattern: yyyy-MM-dd HH:mm:ss z
+```
+
 ## AFK Safety
 
 hPlaytime has its own AFK safety. It does not use Essentials AFK state.
@@ -278,6 +287,7 @@ Common placeholders:
 | `%today%` | Today's playtime |
 | `%month%` | This month's playtime |
 | `%alltime%` | All-time playtime |
+| `%lastseen%` | Last-seen time, `online now`, or `unknown` |
 | `%event%` | Event name |
 | `%duration%` | Event duration |
 | `%time%` | Formatted time |

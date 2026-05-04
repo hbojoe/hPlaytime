@@ -34,7 +34,14 @@ public final class PlaytimeManager {
 
     public void stopTracking(Player player) {
         flushPlayer(player);
+        updateLastSeen(player.getUniqueId(), player.getName(), System.currentTimeMillis());
         activeSessions.remove(player.getUniqueId());
+    }
+
+    public void stopTrackingAll() {
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            stopTracking(player);
+        }
     }
 
     public void flushOnlinePlayers() {
@@ -91,7 +98,7 @@ public final class PlaytimeManager {
             return storage.getSnapshot(uuid, fallbackName, todayKey, monthKey);
         } catch (Exception exception) {
             plugin.getLogger().log(Level.SEVERE, "Could not load playtime for " + fallbackName, exception);
-            return new PlaytimeSnapshot(uuid, fallbackName, 0L, 0L, 0L);
+            return new PlaytimeSnapshot(uuid, fallbackName, 0L, 0L, 0L, 0L);
         }
     }
 
@@ -135,6 +142,14 @@ public final class PlaytimeManager {
 
     public TimeFormatter.Settings timeFormatterSettings() {
         return settings.timeFormatterSettings();
+    }
+
+    public boolean lastSeenEnabled() {
+        return settings.lastSeenEnabled();
+    }
+
+    public String formatLastSeen(long lastSeenMillis) {
+        return settings.lastSeenFormatter().format(Instant.ofEpochMilli(lastSeenMillis).atZone(settings.zoneId()));
     }
 
     private void flushPlayer(Player player) {
@@ -209,6 +224,14 @@ public final class PlaytimeManager {
             storage.updateName(uuid, playerName);
         } catch (Exception exception) {
             plugin.getLogger().log(Level.SEVERE, "Could not update playtime name for " + playerName, exception);
+        }
+    }
+
+    private void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) {
+        try {
+            storage.updateLastSeen(uuid, playerName, lastSeenMillis);
+        } catch (Exception exception) {
+            plugin.getLogger().log(Level.SEVERE, "Could not update last seen for " + playerName, exception);
         }
     }
 

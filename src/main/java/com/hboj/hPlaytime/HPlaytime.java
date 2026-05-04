@@ -42,7 +42,7 @@ public final class HPlaytime extends JavaPlugin {
     @Override
     public void onDisable() {
         if (playtimeManager != null) {
-            playtimeManager.flushAll();
+            playtimeManager.stopTrackingAll();
             playtimeManager.close();
         }
         if (flushTask != null) {

@@ -32,6 +32,7 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
                  CREATE TABLE IF NOT EXISTS %s (
                    uuid CHAR(36) NOT NULL PRIMARY KEY,
                    name VARCHAR(16) NOT NULL,
+                   last_seen_millis BIGINT NULL,
                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                    INDEX name_index (name)
                  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -48,12 +49,30 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
             playersStatement.executeUpdate();
             playtimeStatement.executeUpdate();
         }
+
+        try (Connection connection = connection()) {
+            ensureLastSeenColumn(connection);
+        }
     }
 
     @Override
     public void updateName(UUID uuid, String playerName) throws SQLException {
         try (Connection connection = connection()) {
             updateName(connection, uuid, playerName);
+        }
+    }
+
+    @Override
+    public void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                 "INSERT INTO " + playersTable + " (uuid, name, last_seen_millis) VALUES (?, ?, ?) "
+                     + "ON DUPLICATE KEY UPDATE name = VALUES(name), last_seen_millis = VALUES(last_seen_millis)"
+             )) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, playerName);
+            statement.setLong(3, lastSeenMillis);
+            statement.executeUpdate();
         }
     }
 
@@ -90,11 +109,13 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
     public PlaytimeSnapshot getSnapshot(UUID uuid, String fallbackName, String todayKey, String monthKey) throws SQLException {
         try (Connection connection = connection()) {
             String name = fallbackName;
-            try (PreparedStatement statement = connection.prepareStatement("SELECT name FROM " + playersTable + " WHERE uuid = ?")) {
+            long lastSeenMillis = 0L;
+            try (PreparedStatement statement = connection.prepareStatement("SELECT name, last_seen_millis FROM " + playersTable + " WHERE uuid = ?")) {
                 statement.setString(1, uuid.toString());
                 try (ResultSet resultSet = statement.executeQuery()) {
                     if (resultSet.next()) {
                         name = resultSet.getString("name");
+                        lastSeenMillis = resultSet.getLong("last_seen_millis");
                     }
                 }
             }
@@ -104,7 +125,8 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
                 name,
                 getPeriodMillis(connection, uuid, "daily", todayKey),
                 getPeriodMillis(connection, uuid, "monthly", monthKey),
-                getPeriodMillis(connection, uuid, "alltime", ALLTIME_PERIOD)
+                getPeriodMillis(connection, uuid, "alltime", ALLTIME_PERIOD),
+                lastSeenMillis
             );
         }
     }
@@ -156,6 +178,21 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
         )) {
             statement.setString(1, uuid.toString());
             statement.setString(2, playerName);
+            statement.executeUpdate();
+        }
+    }
+
+    private void ensureLastSeenColumn(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("SHOW COLUMNS FROM " + playersTable + " LIKE 'last_seen_millis'");
+             ResultSet resultSet = statement.executeQuery()) {
+            if (resultSet.next()) {
+                return;
+            }
+        }
+
+        try (PreparedStatement statement = connection.prepareStatement(
+            "ALTER TABLE " + playersTable + " ADD COLUMN last_seen_millis BIGINT NULL AFTER name"
+        )) {
             statement.executeUpdate();
         }
     }

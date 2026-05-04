@@ -9,6 +9,8 @@ public interface PlaytimeStorage extends AutoCloseable {
 
     void updateName(UUID uuid, String playerName) throws Exception;
 
+    void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) throws Exception;
+
     void addPlaytime(UUID uuid, String playerName, List<PlaytimeIncrement> increments) throws Exception;
 
     PlaytimeSnapshot getSnapshot(UUID uuid, String fallbackName, String todayKey, String monthKey) throws Exception;

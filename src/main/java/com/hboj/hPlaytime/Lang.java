@@ -10,6 +10,9 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 public final class Lang {
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
+    private static final Map<String, String> DEFAULT_MESSAGES = Map.of(
+        "playtime-last-seen", "&7Last seen: &f%lastseen%"
+    );
 
     private final HPlaytime plugin;
     private FileConfiguration messages;
@@ -45,7 +48,7 @@ public final class Lang {
     }
 
     private String getString(String key) {
-        return messages.getString(key, key);
+        return messages.getString(key, DEFAULT_MESSAGES.getOrDefault(key, key));
     }
 
     private String format(String message, Map<String, String> placeholders) {
