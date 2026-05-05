@@ -290,6 +290,7 @@ Common placeholders:
 
 | Placeholder | Meaning |
 | --- | --- |
+| `%prefix%` | The configured `prefix` value from `lang.yml` |
 | `%player%` | Player name |
 | `%today%` | Today's playtime |
 | `%month%` | This month's playtime |

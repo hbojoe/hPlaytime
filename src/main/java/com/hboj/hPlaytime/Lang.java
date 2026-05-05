@@ -12,9 +12,9 @@ public final class Lang {
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
     private static final Map<String, String> DEFAULT_MESSAGES = Map.of(
         "playtime-last-seen", "&7Last seen: &f%lastseen%",
-        "leaderboard-header", "&aTop 10 Playtime - &f%period%",
+        "leaderboard-header", "%prefix%&aTop 10 Playtime - &f%period%",
         "leaderboard-entry", "&7#%rank% &f%player% &8- &a%time%",
-        "leaderboard-empty", "&7No playtime has been tracked for &f%period%&7 yet."
+        "leaderboard-empty", "%prefix%&7No playtime has been tracked for &f%period%&7 yet."
     );
 
     private final HPlaytime plugin;
@@ -55,7 +55,7 @@ public final class Lang {
     }
 
     private String format(String message, Map<String, String> placeholders) {
-        String formatted = messages.getString("prefix", "") + message;
+        String formatted = message.replace("%prefix%", messages.getString("prefix", ""));
         for (Map.Entry<String, String> entry : placeholders.entrySet()) {
             formatted = formatted.replace("%" + entry.getKey() + "%", entry.getValue());
         }
