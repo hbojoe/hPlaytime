@@ -38,6 +38,7 @@ public final class HPlaytime extends JavaPlugin {
         Objects.requireNonNull(getCommand("event"), "event command").setExecutor(playtimeCommand);
         Objects.requireNonNull(getCommand("event"), "event command").setTabCompleter(playtimeCommand);
 
+        registerPlaceholderApi();
     }
 
     @Override
@@ -83,5 +84,14 @@ public final class HPlaytime extends JavaPlugin {
         if (!langFile.exists()) {
             saveResource("lang.yml", false);
         }
+    }
+
+    private void registerPlaceholderApi() {
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") == null) {
+            return;
+        }
+
+        new HPlaytimePlaceholderExpansion(this).register();
+        getLogger().info("Registered PlaceholderAPI placeholders.");
     }
 }

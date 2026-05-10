@@ -4,6 +4,7 @@ version: '${version}'
 main: com.hboj.hPlaytime.HPlaytime
 api-version: '1.21.10'
 load: POSTWORLD
+softdepend: [ PlaceholderAPI ]
 
 authors: [ hboj ]
 website: https://hobojoe.dev/

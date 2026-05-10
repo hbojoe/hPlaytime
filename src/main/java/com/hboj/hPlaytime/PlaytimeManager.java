@@ -90,12 +90,24 @@ public final class PlaytimeManager {
             flushPlayer(onlinePlayer);
         }
 
+        return loadSnapshot(uuid, fallbackName, false);
+    }
+
+    public PlaytimeSnapshot getLiveSnapshot(UUID uuid, String fallbackName) {
+        return loadSnapshot(uuid, fallbackName, true);
+    }
+
+    private PlaytimeSnapshot loadSnapshot(UUID uuid, String fallbackName, boolean includeActiveSession) {
         ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
         String todayKey = settings.dailyFormatter().format(now);
         String monthKey = settings.monthlyFormatter().format(now);
 
         try {
-            return storage.getSnapshot(uuid, fallbackName, todayKey, monthKey);
+            PlaytimeSnapshot snapshot = storage.getSnapshot(uuid, fallbackName, todayKey, monthKey);
+            if (includeActiveSession) {
+                return includeActiveSession(snapshot, todayKey, monthKey);
+            }
+            return snapshot;
         } catch (Exception exception) {
             plugin.getLogger().log(Level.SEVERE, "Could not load playtime for " + fallbackName, exception);
             return new PlaytimeSnapshot(uuid, fallbackName, 0L, 0L, 0L, 0L);
@@ -104,16 +116,30 @@ public final class PlaytimeManager {
 
     public List<PlaytimeLeaderboardEntry> getTopDay(int limit) {
         ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
-        return getTop("daily", settings.dailyFormatter().format(now), limit);
+        return getTop("daily", settings.dailyFormatter().format(now), limit, true);
     }
 
     public List<PlaytimeLeaderboardEntry> getTopMonth(int limit) {
         ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
-        return getTop("monthly", settings.monthlyFormatter().format(now), limit);
+        return getTop("monthly", settings.monthlyFormatter().format(now), limit, true);
     }
 
     public List<PlaytimeLeaderboardEntry> getTopAllTime(int limit) {
-        return getTop("alltime", "all", limit);
+        return getTop("alltime", "all", limit, true);
+    }
+
+    public List<PlaytimeLeaderboardEntry> getStoredTopDay(int limit) {
+        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
+        return getTop("daily", settings.dailyFormatter().format(now), limit, false);
+    }
+
+    public List<PlaytimeLeaderboardEntry> getStoredTopMonth(int limit) {
+        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
+        return getTop("monthly", settings.monthlyFormatter().format(now), limit, false);
+    }
+
+    public List<PlaytimeLeaderboardEntry> getStoredTopAllTime(int limit) {
+        return getTop("alltime", "all", limit, false);
     }
 
     public Optional<StoredPlayer> findStoredPlayer(String playerName) {
@@ -125,8 +151,10 @@ public final class PlaytimeManager {
         }
     }
 
-    private List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) {
-        flushOnlinePlayers();
+    private List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean flushOnlinePlayers) {
+        if (flushOnlinePlayers) {
+            flushOnlinePlayers();
+        }
         try {
             return storage.getTop(periodType, periodKey, limit);
         } catch (Exception exception) {
@@ -257,6 +285,41 @@ public final class PlaytimeManager {
         } catch (Exception exception) {
             plugin.getLogger().log(Level.SEVERE, "Could not update last seen for " + playerName, exception);
         }
+    }
+
+    private PlaytimeSnapshot includeActiveSession(PlaytimeSnapshot snapshot, String todayKey, String monthKey) {
+        ActiveSession activeSession = activeSessions.get(snapshot.playerUuid());
+        if (activeSession == null) {
+            return snapshot;
+        }
+
+        long eligibleEndMillis = eligibleEndMillis(activeSession, System.currentTimeMillis());
+        List<PlaytimeIncrement> increments = createIncrements(activeSession, activeSession.currentWorldName(), eligibleEndMillis);
+        if (increments.isEmpty()) {
+            return snapshot;
+        }
+
+        long todayMillis = 0L;
+        long monthMillis = 0L;
+        long alltimeMillis = 0L;
+        for (PlaytimeIncrement increment : increments) {
+            if (increment.dayKey().equals(todayKey)) {
+                todayMillis += increment.millis();
+            }
+            if (increment.monthKey().equals(monthKey)) {
+                monthMillis += increment.millis();
+            }
+            alltimeMillis += increment.millis();
+        }
+
+        return new PlaytimeSnapshot(
+            snapshot.playerUuid(),
+            snapshot.playerName(),
+            snapshot.todayMillis() + todayMillis,
+            snapshot.monthMillis() + monthMillis,
+            snapshot.alltimeMillis() + alltimeMillis,
+            snapshot.lastSeenMillis()
+        );
     }
 
     private long eligibleEndMillis(ActiveSession activeSession, long now) {

@@ -38,6 +38,7 @@ It includes its own data files, language file, config, AFK safety, optional MySQ
 - Java 21
 
 MySQL is optional. hPlaytime uses local YAML storage by default.
+PlaceholderAPI is optional and is only needed if you want to use hPlaytime placeholders in other plugins.
 
 ## Installation
 
@@ -121,6 +122,46 @@ Example:
 | `hplaytime.event.end` | OP | End playtime events |
 | `hplaytime.event.delete` | OP | Delete event tracking files |
 | `hplaytime.event.list` | OP | List events |
+
+## PlaceholderAPI
+
+If PlaceholderAPI is installed, hPlaytime registers the `%hplaytime_...%` placeholders automatically.
+
+Player placeholders:
+
+| Placeholder | Meaning |
+| --- | --- |
+| `%hplaytime_today%` | Today's formatted playtime |
+| `%hplaytime_month%` | This month's formatted playtime |
+| `%hplaytime_alltime%` | All-time formatted playtime |
+| `%hplaytime_today_seconds%` | Today's playtime as whole seconds |
+| `%hplaytime_month_seconds%` | This month's playtime as whole seconds |
+| `%hplaytime_alltime_seconds%` | All-time playtime as whole seconds |
+| `%hplaytime_today_millis%` | Today's playtime as milliseconds |
+| `%hplaytime_month_millis%` | This month's playtime as milliseconds |
+| `%hplaytime_alltime_millis%` | All-time playtime as milliseconds |
+| `%hplaytime_player%` | Stored player name |
+| `%hplaytime_lastseen%` | Last-seen text, `online now`, or `unknown` |
+
+Numeric suffixes also support `_minutes`, `_hours`, and `_days`.
+`daily` is an alias for `today`, `monthly` is an alias for `month`, and `total` is an alias for `alltime`.
+
+For ajLeaderboards, sort by a numeric placeholder and display the formatted one. Example:
+
+```text
+%hplaytime_alltime_seconds%
+```
+
+Direct top placeholders are also available:
+
+| Placeholder | Meaning |
+| --- | --- |
+| `%hplaytime_top_alltime_1_name%` | Name at all-time rank 1 |
+| `%hplaytime_top_alltime_1_time%` | Formatted all-time playtime at rank 1 |
+| `%hplaytime_top_today_1_name%` | Name at today's rank 1 |
+| `%hplaytime_top_month_1_time%` | Formatted monthly playtime at rank 1 |
+
+The top placeholder format is `%hplaytime_top_<today|month|alltime>_<rank>_<name|uuid|time|millis|seconds|minutes|hours|days>%`.
 
 ## Storage
 
