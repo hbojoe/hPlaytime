@@ -32,6 +32,15 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
     }
 
     @Override
+    public void updateLeaderboardHidden(UUID uuid, String playerName, boolean hidden) throws IOException {
+        YamlConfiguration data = loadPlayerData(uuid);
+        data.set("uuid", uuid.toString());
+        data.set("name", playerName);
+        data.set("leaderboard-hidden", hidden);
+        savePlayerData(uuid, data);
+    }
+
+    @Override
     public void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) throws IOException {
         YamlConfiguration data = loadPlayerData(uuid);
         data.set("uuid", uuid.toString());
@@ -75,7 +84,7 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
     }
 
     @Override
-    public List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) {
+    public List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean includeHidden) {
         File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
         if (files == null) {
             return List.of();
@@ -84,6 +93,9 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
         List<PlaytimeLeaderboardEntry> entries = new ArrayList<>();
         for (File file : files) {
             YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
+            if (!includeHidden && data.getBoolean("leaderboard-hidden", false)) {
+                continue;
+            }
             String storedUuid = data.getString("uuid");
             String storedName = data.getString("name", storedUuid);
             long millis = getPeriodMillis(data, periodType, periodKey);
@@ -145,6 +157,7 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
         String storedUuid = data.getString("uuid", uuid.toString());
         String storedName = data.getString("name");
         long lastSeenMillis = data.getLong("last-seen-millis", 0L);
+        boolean leaderboardHidden = data.getBoolean("leaderboard-hidden", false);
         data = new YamlConfiguration();
         data.set("uuid", storedUuid);
         if (storedName != null) {
@@ -153,6 +166,7 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
         if (lastSeenMillis > 0L) {
             data.set("last-seen-millis", lastSeenMillis);
         }
+        data.set("leaderboard-hidden", leaderboardHidden);
         data.set("alltime-millis", 0L);
         savePlayerData(uuid, data);
     }
@@ -169,6 +183,7 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
             String storedUuid = data.getString("uuid");
             String storedName = data.getString("name");
             long lastSeenMillis = data.getLong("last-seen-millis", 0L);
+            boolean leaderboardHidden = data.getBoolean("leaderboard-hidden", false);
             YamlConfiguration resetData = new YamlConfiguration();
             if (storedUuid != null) {
                 resetData.set("uuid", storedUuid);
@@ -179,6 +194,7 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
             if (lastSeenMillis > 0L) {
                 resetData.set("last-seen-millis", lastSeenMillis);
             }
+            resetData.set("leaderboard-hidden", leaderboardHidden);
             resetData.set("alltime-millis", 0L);
             resetData.save(file);
         }

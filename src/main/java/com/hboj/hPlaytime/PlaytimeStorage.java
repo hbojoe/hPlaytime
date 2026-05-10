@@ -9,13 +9,15 @@ public interface PlaytimeStorage extends AutoCloseable {
 
     void updateName(UUID uuid, String playerName) throws Exception;
 
+    void updateLeaderboardHidden(UUID uuid, String playerName, boolean hidden) throws Exception;
+
     void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) throws Exception;
 
     void addPlaytime(UUID uuid, String playerName, List<PlaytimeIncrement> increments) throws Exception;
 
     PlaytimeSnapshot getSnapshot(UUID uuid, String fallbackName, String todayKey, String monthKey) throws Exception;
 
-    List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) throws Exception;
+    List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean includeHidden) throws Exception;
 
     List<String> getKnownPlayerNames() throws Exception;
 

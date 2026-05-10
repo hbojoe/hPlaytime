@@ -14,6 +14,8 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 
 public final class PlaytimeManager {
+    public static final String LEADERBOARD_HIDE_PERMISSION = "hplaytime.leaderboard.hide";
+
     private final HPlaytime plugin;
     private final EventManager eventManager;
     private final Map<UUID, ActiveSession> activeSessions = new HashMap<>();
@@ -30,6 +32,7 @@ public final class PlaytimeManager {
         long now = System.currentTimeMillis();
         activeSessions.put(player.getUniqueId(), new ActiveSession(now, player.getWorld().getName()));
         updateStoredName(player.getUniqueId(), player.getName());
+        updateLeaderboardHidden(player);
     }
 
     public void stopTracking(Player player) {
@@ -165,7 +168,7 @@ public final class PlaytimeManager {
             flushOnlinePlayers();
         }
         try {
-            return storage.getTop(periodType, periodKey, limit);
+            return storage.getTop(periodType, periodKey, limit, false);
         } catch (Exception exception) {
             plugin.getLogger().log(Level.SEVERE, "Could not load playtime leaderboard.", exception);
             return List.of();
@@ -188,6 +191,7 @@ public final class PlaytimeManager {
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             activeSessions.put(player.getUniqueId(), new ActiveSession(System.currentTimeMillis(), player.getWorld().getName()));
             updateStoredName(player.getUniqueId(), player.getName());
+            updateLeaderboardHidden(player);
         }
     }
 
@@ -215,6 +219,9 @@ public final class PlaytimeManager {
 
     private void flushPlayer(Player player) {
         ActiveSession activeSession = activeSessions.get(player.getUniqueId());
+        if (activeSession != null) {
+            updateLeaderboardHidden(player);
+        }
         String worldName = activeSession == null ? player.getWorld().getName() : activeSession.currentWorldName();
         flushPlayer(player.getUniqueId(), player.getName(), worldName);
     }
@@ -285,6 +292,18 @@ public final class PlaytimeManager {
             storage.updateName(uuid, playerName);
         } catch (Exception exception) {
             plugin.getLogger().log(Level.SEVERE, "Could not update playtime name for " + playerName, exception);
+        }
+    }
+
+    private void updateLeaderboardHidden(Player player) {
+        try {
+            storage.updateLeaderboardHidden(
+                player.getUniqueId(),
+                player.getName(),
+                player.hasPermission(LEADERBOARD_HIDE_PERMISSION)
+            );
+        } catch (Exception exception) {
+            plugin.getLogger().log(Level.SEVERE, "Could not update leaderboard visibility for " + player.getName(), exception);
         }
     }
 

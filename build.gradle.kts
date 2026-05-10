@@ -52,7 +52,7 @@ fun registerMinecraftReleaseJar(taskSuffix: String, classifier: String, apiVersi
 }
 
 val shadowJarMc26_1 = registerMinecraftReleaseJar("Mc26_1", "mc26.1", "26.1.2")
-val shadowJarMc26_2 = registerMinecraftReleaseJar("Mc26_2", "mc26.2", "26.2")
+val shadowJarMc26_2 = registerMinecraftReleaseJar("Mc26_2", "mc26.2", "26.1.2")
 
 tasks {
     runServer {

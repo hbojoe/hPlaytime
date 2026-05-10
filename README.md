@@ -62,7 +62,7 @@ The jars are written to `build/libs/`:
 | --- | --- |
 | `hPlaytime-1.0.0.jar` | Paper 1.21.10 / 1.21.11 |
 | `hPlaytime-1.0.0-mc26.1.jar` | Paper 26.1.x |
-| `hPlaytime-1.0.0-mc26.2.jar` | Paper 26.2.x |
+| `hPlaytime-1.0.0-mc26.2.jar` | Paper 26.2.x, using Paper's latest valid 26.x API marker |
 
 ## Plugin Files
 
@@ -134,6 +134,7 @@ Example:
 | --- | --- | --- |
 | `hplaytime.use` | Everyone | Use `/playtime` |
 | `hplaytime.others` | OP | Check another player's playtime |
+| `hplaytime.leaderboard.hide` | No one | Hide the player from hPlaytime leaderboard rankings |
 | `hplaytime.reload` | OP | Reload hPlaytime |
 | `hplaytime.reset` | OP | Reset one player's main playtime |
 | `hplaytime.resetall` | OP | Reset all main playtime |
@@ -372,6 +373,7 @@ After editing `lang.yml`, run:
 
 - Reset commands affect main playtime only.
 - Reset commands do not delete event logs.
+- Players with `hplaytime.leaderboard.hide` are hidden from `/playtime top`, `/playtime topday`, `/playtime topmonth`, and PlaceholderAPI top placeholders.
 - AFK timeout applies to main playtime and event playtime.
 - AFK worlds apply to main playtime and event playtime.
 - Event logs are intentionally kept after an event is deleted.

@@ -34,6 +34,7 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
                    uuid CHAR(36) NOT NULL PRIMARY KEY,
                    name VARCHAR(16) NOT NULL,
                    last_seen_millis BIGINT NULL,
+                   hidden_from_leaderboards BOOLEAN NOT NULL DEFAULT FALSE,
                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                    INDEX name_index (name)
                  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -53,6 +54,7 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
 
         try (Connection connection = connection()) {
             ensureLastSeenColumn(connection);
+            ensureLeaderboardHiddenColumn(connection);
         }
     }
 
@@ -60,6 +62,20 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
     public void updateName(UUID uuid, String playerName) throws SQLException {
         try (Connection connection = connection()) {
             updateName(connection, uuid, playerName);
+        }
+    }
+
+    @Override
+    public void updateLeaderboardHidden(UUID uuid, String playerName, boolean hidden) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                 "INSERT INTO " + playersTable + " (uuid, name, hidden_from_leaderboards) VALUES (?, ?, ?) "
+                     + "ON DUPLICATE KEY UPDATE name = VALUES(name), hidden_from_leaderboards = VALUES(hidden_from_leaderboards)"
+             )) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, playerName);
+            statement.setBoolean(3, hidden);
+            statement.executeUpdate();
         }
     }
 
@@ -133,12 +149,14 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
     }
 
     @Override
-    public List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) throws SQLException {
+    public List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean includeHidden) throws SQLException {
+        String hiddenFilter = includeHidden ? "" : "AND COALESCE(p.hidden_from_leaderboards, FALSE) = FALSE ";
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                  "SELECT pt.uuid, p.name, pt.millis FROM " + playtimeTable + " pt "
                      + "LEFT JOIN " + playersTable + " p ON p.uuid = pt.uuid "
                      + "WHERE pt.period_type = ? AND pt.period_key = ? AND pt.millis > 0 "
+                     + hiddenFilter
                      + "ORDER BY pt.millis DESC LIMIT ?"
              )) {
             statement.setString(1, periodType);
@@ -238,6 +256,21 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
 
         try (PreparedStatement statement = connection.prepareStatement(
             "ALTER TABLE " + playersTable + " ADD COLUMN last_seen_millis BIGINT NULL AFTER name"
+        )) {
+            statement.executeUpdate();
+        }
+    }
+
+    private void ensureLeaderboardHiddenColumn(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("SHOW COLUMNS FROM " + playersTable + " LIKE 'hidden_from_leaderboards'");
+             ResultSet resultSet = statement.executeQuery()) {
+            if (resultSet.next()) {
+                return;
+            }
+        }
+
+        try (PreparedStatement statement = connection.prepareStatement(
+            "ALTER TABLE " + playersTable + " ADD COLUMN hidden_from_leaderboards BOOLEAN NOT NULL DEFAULT FALSE AFTER last_seen_millis"
         )) {
             statement.executeUpdate();
         }

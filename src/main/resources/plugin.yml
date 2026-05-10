@@ -29,6 +29,9 @@ permissions:
   hplaytime.others:
     description: Allows checking another player's hPlaytime.
     default: op
+  hplaytime.leaderboard.hide:
+    description: Hides this player from hPlaytime leaderboard rankings.
+    default: false
   hplaytime.reload:
     description: Allows reloading hPlaytime language messages.
     default: op
