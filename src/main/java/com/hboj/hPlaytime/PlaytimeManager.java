@@ -151,6 +151,15 @@ public final class PlaytimeManager {
         }
     }
 
+    public List<String> getKnownPlayerNames() {
+        try {
+            return storage.getKnownPlayerNames();
+        } catch (Exception exception) {
+            plugin.getLogger().log(Level.SEVERE, "Could not load known playtime player names.", exception);
+            return List.of();
+        }
+    }
+
     private List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean flushOnlinePlayers) {
         if (flushOnlinePlayers) {
             flushOnlinePlayers();

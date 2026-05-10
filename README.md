@@ -48,6 +48,22 @@ PlaceholderAPI is optional and is only needed if you want to use hPlaytime place
 4. Edit `plugins/hPlaytime/config.yml` and `plugins/hPlaytime/lang.yml` as needed.
 5. Run `/hplaytime reload` after editing config or language files.
 
+## Release Builds
+
+Run this to build every supported release jar:
+
+```text
+./gradlew buildReleaseJars
+```
+
+The jars are written to `build/libs/`:
+
+| Jar | Server version |
+| --- | --- |
+| `hPlaytime-1.0.0.jar` | Paper 1.21.10 / 1.21.11 |
+| `hPlaytime-1.0.0-mc26.1.jar` | Paper 26.1.x |
+| `hPlaytime-1.0.0-mc26.2.jar` | Paper 26.2.x |
+
 ## Plugin Files
 
 hPlaytime creates this folder:
@@ -79,6 +95,9 @@ Important files and folders:
 | `/playtime top` | Shows the top 10 all-time playtime leaderboard |
 | `/playtime topday` | Shows the top 10 daily playtime leaderboard |
 | `/playtime topmonth` | Shows the top 10 monthly playtime leaderboard |
+
+`/playtime <tab>` shows normal subcommands and your own player name.
+`/playtime player <tab>` shows known players who have joined before if you have permission to check others.
 
 ### Admin
 

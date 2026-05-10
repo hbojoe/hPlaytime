@@ -20,6 +20,40 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(21)
 }
 
+val pluginVersion = version.toString()
+
+fun registerMinecraftReleaseJar(taskSuffix: String, classifier: String, apiVersion: String): TaskProvider<Jar> {
+    val resourceOutput = layout.buildDirectory.dir("generated/resources/$taskSuffix")
+    val resourceProperties = mapOf("version" to pluginVersion, "apiVersion" to apiVersion)
+    val processVariantResources = tasks.register<org.gradle.language.jvm.tasks.ProcessResources>("process${taskSuffix}Resources") {
+        from(sourceSets.main.get().resources)
+        destinationDir = resourceOutput.get().asFile
+        filesMatching("plugin.yml") {
+            expand(resourceProperties)
+        }
+    }
+
+    return tasks.register<Jar>("shadowJar$taskSuffix") {
+        group = "build"
+        description = "Creates the shaded hPlaytime jar for Minecraft $apiVersion."
+        archiveClassifier.set(classifier)
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+        dependsOn(tasks.named("classes"), processVariantResources)
+        from(sourceSets.main.get().output.classesDirs)
+        from(resourceOutput)
+        from({
+            configurations.runtimeClasspath.get()
+                .filter { it.isFile && it.name.endsWith(".jar") }
+                .map { zipTree(it) }
+        })
+        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    }
+}
+
+val shadowJarMc26_1 = registerMinecraftReleaseJar("Mc26_1", "mc26.1", "26.1.2")
+val shadowJarMc26_2 = registerMinecraftReleaseJar("Mc26_2", "mc26.2", "26.2")
+
 tasks {
     runServer {
         // Configure the Minecraft version for our task.
@@ -30,7 +64,7 @@ tasks {
     }
 
     processResources {
-        val props = mapOf("version" to version)
+        val props = mapOf("version" to pluginVersion, "apiVersion" to "1.21.10")
         filesMatching("plugin.yml") {
             expand(props)
         }
@@ -41,6 +75,12 @@ tasks {
     }
 
     build {
-        dependsOn(shadowJar)
+        dependsOn(shadowJar, shadowJarMc26_1, shadowJarMc26_2)
     }
+}
+
+tasks.register("buildReleaseJars") {
+    group = "build"
+    description = "Builds the legacy, Minecraft 26.1, and Minecraft 26.2 release jars."
+    dependsOn(tasks.named("shadowJar"), shadowJarMc26_1, shadowJarMc26_2)
 }

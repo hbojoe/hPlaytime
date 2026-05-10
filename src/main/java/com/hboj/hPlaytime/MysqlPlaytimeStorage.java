@@ -162,6 +162,22 @@ public final class MysqlPlaytimeStorage implements PlaytimeStorage {
     }
 
     @Override
+    public List<String> getKnownPlayerNames() throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement("SELECT name FROM " + playersTable + " ORDER BY name ASC");
+             ResultSet resultSet = statement.executeQuery()) {
+            List<String> names = new ArrayList<>();
+            while (resultSet.next()) {
+                String name = resultSet.getString("name");
+                if (name != null && !name.isBlank()) {
+                    names.add(name);
+                }
+            }
+            return names;
+        }
+    }
+
+    @Override
     public Optional<StoredPlayer> findByName(String playerName) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(

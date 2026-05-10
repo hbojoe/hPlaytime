@@ -372,9 +372,7 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             values.add("topday");
             values.add("topmonth");
             values.add("player");
-            if (sender.hasPermission("hplaytime.others")) {
-                values.addAll(knownPlayerNames(true));
-            } else if (sender instanceof Player player) {
+            if (sender instanceof Player player) {
                 values.add(player.getName());
             }
             if (hasAnyEventPermission(sender)) {
@@ -393,7 +391,7 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("player")) {
-            return playerNameCompletions(sender, args[1], false);
+            return playerNameCompletions(sender, args[1], true);
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("start")) {
@@ -500,6 +498,7 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             .forEach(names::add);
 
         if (includeOffline) {
+            names.addAll(playtimeManager.getKnownPlayerNames());
             for (OfflinePlayer offlinePlayer : plugin.getServer().getOfflinePlayers()) {
                 String name = offlinePlayer.getName();
                 if (name != null && offlinePlayer.hasPlayedBefore()) {

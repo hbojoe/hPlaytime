@@ -2,7 +2,7 @@ name: hPlaytime
 version: '${version}'
 
 main: com.hboj.hPlaytime.HPlaytime
-api-version: '1.21.10'
+api-version: '${apiVersion}'
 load: POSTWORLD
 softdepend: [ PlaceholderAPI ]
 

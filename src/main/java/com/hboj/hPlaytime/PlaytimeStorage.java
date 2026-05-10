@@ -17,6 +17,8 @@ public interface PlaytimeStorage extends AutoCloseable {
 
     List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit) throws Exception;
 
+    List<String> getKnownPlayerNames() throws Exception;
+
     Optional<StoredPlayer> findByName(String playerName) throws Exception;
 
     void resetPlayer(UUID uuid) throws Exception;

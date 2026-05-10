@@ -103,6 +103,24 @@ public final class LocalPlaytimeStorage implements PlaytimeStorage {
     }
 
     @Override
+    public List<String> getKnownPlayerNames() {
+        File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
+        if (files == null) {
+            return List.of();
+        }
+
+        List<String> names = new ArrayList<>();
+        for (File file : files) {
+            YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
+            String storedName = data.getString("name");
+            if (storedName != null && !storedName.isBlank()) {
+                names.add(storedName);
+            }
+        }
+        return names;
+    }
+
+    @Override
     public Optional<StoredPlayer> findByName(String playerName) {
         File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
         if (files == null) {
