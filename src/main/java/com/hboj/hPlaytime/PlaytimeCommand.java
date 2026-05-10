@@ -2,9 +2,11 @@ package com.hboj.hPlaytime;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -109,6 +111,15 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        if (args[0].equalsIgnoreCase("player")) {
+            if (args.length == 2) {
+                return sendTargetPlaytime(sender, args[1]);
+            }
+
+            lang.send(sender, "usage-playtime");
+            return true;
+        }
+
         if (args.length == 2 && args[0].equalsIgnoreCase("start")) {
             return startEvent(sender, args[1]);
         }
@@ -126,24 +137,7 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        StoredPlayer target = findPlayer(args[0]);
-        if (target == null) {
-            lang.send(sender, "unknown-player", Map.of("player", args[0]));
-            return true;
-        }
-
-        if (sender instanceof Player player && target.uuid().equals(player.getUniqueId())) {
-            sendPlaytime(sender, target.uuid(), target.name());
-            return true;
-        }
-
-        if (!sender.hasPermission("hplaytime.others")) {
-            lang.send(sender, "no-permission");
-            return true;
-        }
-
-        sendPlaytime(sender, target.uuid(), target.name());
-        return true;
+        return sendTargetPlaytime(sender, args[0]);
     }
 
     private boolean handleEventCommand(CommandSender sender, String[] args) {
@@ -277,6 +271,27 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
         return playtimeManager.findStoredPlayer(name).orElse(null);
     }
 
+    private boolean sendTargetPlaytime(CommandSender sender, String playerName) {
+        StoredPlayer target = findPlayer(playerName);
+        if (target == null) {
+            lang.send(sender, "unknown-player", Map.of("player", playerName));
+            return true;
+        }
+
+        if (sender instanceof Player player && target.uuid().equals(player.getUniqueId())) {
+            sendPlaytime(sender, target.uuid(), target.name());
+            return true;
+        }
+
+        if (!sender.hasPermission("hplaytime.others")) {
+            lang.send(sender, "no-permission");
+            return true;
+        }
+
+        sendPlaytime(sender, target.uuid(), target.name());
+        return true;
+    }
+
     private void sendPlaytime(CommandSender sender, UUID targetUuid, String fallbackName) {
         PlaytimeSnapshot snapshot = playtimeManager.getSnapshot(targetUuid, fallbackName);
         String playerName = snapshot.playerName() == null ? targetUuid.toString() : snapshot.playerName();
@@ -328,11 +343,21 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         String commandName = command.getName().toLowerCase(Locale.ROOT);
         if (commandName.equals("hplaytime")) {
-            if (args.length == 1 && sender.hasPermission("hplaytime.reload")) {
-                return startsWith(List.of("reload", "reset", "resetall"), args[0]);
+            if (args.length == 1) {
+                List<String> values = new ArrayList<>();
+                if (sender.hasPermission("hplaytime.reload")) {
+                    values.add("reload");
+                }
+                if (sender.hasPermission("hplaytime.reset")) {
+                    values.add("reset");
+                }
+                if (sender.hasPermission("hplaytime.resetall")) {
+                    values.add("resetall");
+                }
+                return startsWith(values, args[0]);
             }
             if (args.length == 2 && args[0].equalsIgnoreCase("reset")) {
-                return playerNameCompletions(sender, args[1]);
+                return resetPlayerNameCompletions(sender, args[1]);
             }
             return Collections.emptyList();
         }
@@ -342,15 +367,20 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1) {
-            List<String> values = new ArrayList<>();
+            Set<String> values = new LinkedHashSet<>();
             values.add("top");
             values.add("topday");
             values.add("topmonth");
+            values.add("player");
             if (sender.hasPermission("hplaytime.others")) {
-                values.addAll(plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList());
+                values.addAll(knownPlayerNames(true));
+            } else if (sender instanceof Player player) {
+                values.add(player.getName());
             }
-            if (sender.hasPermission("hplaytime.event.create") || sender.hasPermission("hplaytime.event.start")) {
+            if (hasAnyEventPermission(sender)) {
                 values.add("event");
+            }
+            if (sender.hasPermission("hplaytime.event.start")) {
                 values.add("start");
             }
             if (sender.hasPermission("hplaytime.reset")) {
@@ -359,15 +389,22 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             if (sender.hasPermission("hplaytime.resetall")) {
                 values.add("resetall");
             }
-            return startsWith(values, args[0]);
+            return startsWith(new ArrayList<>(values), args[0]);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("player")) {
+            return playerNameCompletions(sender, args[1], false);
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("start")) {
+            if (!sender.hasPermission("hplaytime.event.start")) {
+                return Collections.emptyList();
+            }
             return startsWith(eventManager.eventNames(), args[1]);
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("reset")) {
-            return playerNameCompletions(sender, args[1]);
+            return resetPlayerNameCompletions(sender, args[1]);
         }
 
         if (args.length >= 2 && args[0].equalsIgnoreCase("event")) {
@@ -400,22 +437,78 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 2
             && (args[0].equalsIgnoreCase("start") || args[0].equalsIgnoreCase("end") || args[0].equalsIgnoreCase("delete"))) {
+            if (!canCompleteEventNames(sender, args[0])) {
+                return Collections.emptyList();
+            }
             return startsWith(eventManager.eventNames(), args[1]);
         }
 
         if (args.length == 3 && args[0].equalsIgnoreCase("create")) {
+            if (!sender.hasPermission("hplaytime.event.create")) {
+                return Collections.emptyList();
+            }
             return startsWith(List.of("24h", "12h", "7d", "30m"), args[2]);
         }
 
         return Collections.emptyList();
     }
 
-    private List<String> playerNameCompletions(CommandSender sender, String prefix) {
-        if (!sender.hasPermission("hplaytime.others") && !sender.hasPermission("hplaytime.reset")) {
+    private boolean hasAnyEventPermission(CommandSender sender) {
+        return sender.hasPermission("hplaytime.event.create")
+            || sender.hasPermission("hplaytime.event.start")
+            || sender.hasPermission("hplaytime.event.end")
+            || sender.hasPermission("hplaytime.event.delete")
+            || sender.hasPermission("hplaytime.event.list");
+    }
+
+    private boolean canCompleteEventNames(CommandSender sender, String action) {
+        if (action.equalsIgnoreCase("start")) {
+            return sender.hasPermission("hplaytime.event.start");
+        }
+        if (action.equalsIgnoreCase("end")) {
+            return sender.hasPermission("hplaytime.event.end");
+        }
+        if (action.equalsIgnoreCase("delete")) {
+            return sender.hasPermission("hplaytime.event.delete");
+        }
+        return false;
+    }
+
+    private List<String> playerNameCompletions(CommandSender sender, String prefix, boolean includeOffline) {
+        if (!sender.hasPermission("hplaytime.others")) {
+            if (sender instanceof Player player) {
+                return startsWith(List.of(player.getName()), prefix);
+            }
             return Collections.emptyList();
         }
 
-        return startsWith(plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList(), prefix);
+        return startsWith(knownPlayerNames(includeOffline), prefix);
+    }
+
+    private List<String> resetPlayerNameCompletions(CommandSender sender, String prefix) {
+        if (!sender.hasPermission("hplaytime.reset")) {
+            return Collections.emptyList();
+        }
+
+        return startsWith(knownPlayerNames(true), prefix);
+    }
+
+    private List<String> knownPlayerNames(boolean includeOffline) {
+        Set<String> names = new LinkedHashSet<>();
+        plugin.getServer().getOnlinePlayers().stream()
+            .map(Player::getName)
+            .forEach(names::add);
+
+        if (includeOffline) {
+            for (OfflinePlayer offlinePlayer : plugin.getServer().getOfflinePlayers()) {
+                String name = offlinePlayer.getName();
+                if (name != null && offlinePlayer.hasPlayedBefore()) {
+                    names.add(name);
+                }
+            }
+        }
+
+        return new ArrayList<>(names);
     }
 
     private List<String> startsWith(List<String> values, String prefix) {

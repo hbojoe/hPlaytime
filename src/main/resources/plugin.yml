@@ -12,7 +12,7 @@ website: https://hobojoe.dev/
 commands:
   playtime:
     description: Shows playtime tracked by hPlaytime.
-    usage: /playtime [player|top|topday|topmonth]
+    usage: /playtime [player|player <player>|top|topday|topmonth]
     aliases: [ pt ]
     permission: hplaytime.use
   hplaytime:
