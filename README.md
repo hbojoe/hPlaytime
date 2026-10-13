@@ -40,6 +40,17 @@ It includes its own data files, language file, config, AFK safety, optional MySQ
 MySQL is optional. hPlaytime uses local YAML storage by default.
 PlaceholderAPI is optional and is only needed if you want to use hPlaytime placeholders in other plugins.
 
+## Platform Support
+
+| Platform | Supported | Notes |
+| --- | --- | --- |
+| Paper | Yes | Primary supported platform. |
+| Purpur | Yes | Supported as a Paper fork. |
+| Spigot | No | hPlaytime is built against Paper APIs and expects Paper's Adventure support. |
+| Bukkit / CraftBukkit | No | hPlaytime targets Paper, not the base Bukkit/CraftBukkit server. |
+| Folia | No | hPlaytime currently uses the standard Bukkit scheduler and is not Folia-region-thread aware. |
+| Sponge | No | Sponge uses a different plugin API and would require a separate plugin port. |
+
 ## Installation
 
 1. Download the latest hPlaytime jar from the releases page.
