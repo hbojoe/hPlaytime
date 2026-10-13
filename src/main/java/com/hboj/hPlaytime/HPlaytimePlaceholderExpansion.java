@@ -21,13 +21,13 @@ public final class HPlaytimePlaceholderExpansion extends PlaceholderExpansion {
 
     @Override
     public String getAuthor() {
-        List<String> authors = plugin.getPluginMeta().getAuthors();
+        List<String> authors = plugin.getDescription().getAuthors();
         return authors.isEmpty() ? "hboj" : String.join(", ", authors);
     }
 
     @Override
     public String getVersion() {
-        return plugin.getPluginMeta().getVersion();
+        return plugin.getDescription().getVersion();
     }
 
     @Override

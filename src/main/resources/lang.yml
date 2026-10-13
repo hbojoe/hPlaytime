@@ -33,9 +33,9 @@ event-ended-no-players:
 
 playtime:
   - "%prefix%&aPlaytime for &f%player%&a:"
-  - "&7Today: &f%today%"
-  - "&7This month: &f%month%"
-  - "&7All time: &f%alltime%"
+  - "&7Total: &f%alltime%"
+  #- "&7Today: &f%today%"
+  #- "&7This month: &f%month%"
 playtime-last-seen: "&7Last seen: &f%lastseen%"
 
 leaderboard-header: "%prefix%&aTop 10 Playtime - &f%period%"

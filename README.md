@@ -34,8 +34,8 @@ It includes its own data files, language file, config, AFK safety, optional MySQ
 
 ## Requirements
 
-- Paper server 1.21.10 or 1.21.11
-- Java 21
+- Paper server 1.19 through 1.21.11, plus 26.1 through 26.3
+- Java 17 or newer for the plugin; use whatever Java version your Paper server version requires
 
 MySQL is optional. hPlaytime uses local YAML storage by default.
 PlaceholderAPI is optional and is only needed if you want to use hPlaytime placeholders in other plugins.
@@ -50,19 +50,17 @@ PlaceholderAPI is optional and is only needed if you want to use hPlaytime place
 
 ## Release Builds
 
-Run this to build every supported release jar:
+Run this to build the universal release jar:
 
 ```text
 ./gradlew buildReleaseJars
 ```
 
-The jars are written to `build/libs/`:
+The jar is written to `build/libs/`:
 
 | Jar | Server version |
 | --- | --- |
-| `hPlaytime-1.0.0.jar` | Paper 1.21.10 / 1.21.11 |
-| `hPlaytime-1.0.0-mc26.1.jar` | Paper 26.1.x |
-| `hPlaytime-1.0.0-mc26.2.jar` | Paper 26.2.x, using Paper's latest valid 26.x API marker |
+| `hPlaytime-1.0.6.jar` | Paper 1.19 through 1.21.11, plus 26.1 through 26.3 |
 
 ## Plugin Files
 
