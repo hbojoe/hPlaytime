@@ -1,6 +1,5 @@
 package com.hboj.hPlaytime;
 
-import org.bukkit.configuration.ConfigurationSection;
 
 public final class TimeFormatter {
     private TimeFormatter() {
@@ -106,7 +105,7 @@ public final class TimeFormatter {
         String longSecond,
         String longSeconds
     ) {
-        public static Settings load(ConfigurationSection section) {
+        public static Settings load(SettingsReader section) {
             if (section == null) {
                 return defaults();
             }

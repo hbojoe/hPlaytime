@@ -51,7 +51,8 @@ public final class HPlaytimePlaceholderExpansion extends PlaceholderExpansion {
             return "";
         }
 
-        String fallbackName = player.getName() == null ? player.getUniqueId().toString() : player.getName();
+        // OfflinePlayer#getName may consult server caches; persistence already has the name.
+        String fallbackName = player.getUniqueId().toString();
         PlaytimeSnapshot snapshot = plugin.playtimeManager().getLiveSnapshot(player.getUniqueId(), fallbackName);
         return playerPlaceholder(player, normalizedParams, snapshot);
     }
@@ -174,7 +175,7 @@ public final class HPlaytimePlaceholderExpansion extends PlaceholderExpansion {
     }
 
     private String lastSeen(OfflinePlayer player, PlaytimeSnapshot snapshot) {
-        if (plugin.getServer().getPlayer(player.getUniqueId()) != null) {
+        if (plugin.playtimeManager().isOnline(player.getUniqueId())) {
             return "online now";
         }
         if (snapshot.lastSeenMillis() <= 0L) {

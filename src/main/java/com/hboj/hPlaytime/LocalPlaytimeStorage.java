@@ -1,227 +1,95 @@
 package com.hboj.hPlaytime;
 
 import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
-import org.bukkit.configuration.file.YamlConfiguration;
 
+/** Worker-confined local storage. A durable absolute redo plan prevents partial-operation duplicates. */
 public final class LocalPlaytimeStorage implements PlaytimeStorage {
-    private final File playerDataFolder;
+    private final Path folder;
+    private StorageView view;
+    public LocalPlaytimeStorage(File folder) { this.folder = folder.toPath(); }
 
-    public LocalPlaytimeStorage(File playerDataFolder) {
-        this.playerDataFolder = playerDataFolder;
+    @Override public void initialize() throws Exception {
+        Files.createDirectories(folder.resolve(".persistence/receipts"));
+        replayPending();
     }
 
-    @Override
-    public void initialize() {
-        if (!playerDataFolder.exists() && !playerDataFolder.mkdirs()) {
-            throw new IllegalStateException("Could not create playtime data folder: " + playerDataFolder);
+    @Override public StorageView loadView() throws Exception {
+        if (view != null) return view;
+        Map<UUID, PlayerData> players = new HashMap<>();
+        try (var files = Files.list(folder)) {
+            for (Path file : files.filter(path -> path.toString().endsWith(".yml")).toList()) {
+                UUID uuid;
+                try { uuid = UUID.fromString(file.getFileName().toString().replaceFirst("\\.yml$", "")); }
+                catch (IllegalArgumentException ignored) { continue; }
+                PlayerData data = PlayerData.fromYaml(uuid, YamlFiles.read(file));
+                if (!uuid.equals(data.uuid())) throw new IllegalStateException("UUID mismatch: " + file);
+                players.put(uuid, data);
+            }
         }
+        Map<String, Object> state = YamlFiles.read(folder.resolve(".persistence/state.yml"));
+        view = new StorageView(players, YamlFiles.number(state, "reset-millis"), readClocks(state));
+        return view;
     }
 
-    @Override
-    public void updateName(UUID uuid, String playerName) throws IOException {
-        YamlConfiguration data = loadPlayerData(uuid);
-        data.set("uuid", uuid.toString());
-        data.set("name", playerName);
-        savePlayerData(uuid, data);
-    }
-
-    @Override
-    public void updateLeaderboardHidden(UUID uuid, String playerName, boolean hidden) throws IOException {
-        YamlConfiguration data = loadPlayerData(uuid);
-        data.set("uuid", uuid.toString());
-        data.set("name", playerName);
-        data.set("leaderboard-hidden", hidden);
-        savePlayerData(uuid, data);
-    }
-
-    @Override
-    public void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) throws IOException {
-        YamlConfiguration data = loadPlayerData(uuid);
-        data.set("uuid", uuid.toString());
-        data.set("name", playerName);
-        data.set("last-seen-millis", lastSeenMillis);
-        savePlayerData(uuid, data);
-    }
-
-    @Override
-    public void addPlaytime(UUID uuid, String playerName, List<PlaytimeIncrement> increments) throws IOException {
-        if (increments.isEmpty()) {
+    @Override public void apply(StorageMutation mutation) throws Exception {
+        replayPending();
+        Path receipt = folder.resolve(".persistence/receipts").resolve(mutation.id().toString());
+        String hash = mutation.hash();
+        if (Files.exists(receipt)) {
+            if (!Files.readString(receipt).equals(hash)) throw new IllegalStateException("Operation ID reused with another payload");
             return;
         }
+        StorageView before = loadView(), after = mutation.project(before);
+        Map<String, Object> changed = new LinkedHashMap<>();
+        after.players().forEach((uuid, data) -> {
+            if (!data.equals(before.players().get(uuid))) changed.put(uuid.toString(), data.toYaml());
+        });
+        Map<String, Object> plan = Map.of("id", mutation.id().toString(), "hash", hash, "players", changed, "state", state(after));
+        YamlFiles.write(folder.resolve(".persistence/pending.yml"), plan);
+        finishPlan(plan);
+        view = after;
+    }
 
-        YamlConfiguration data = loadPlayerData(uuid);
-        data.set("uuid", uuid.toString());
-        data.set("name", playerName);
+    @SuppressWarnings("unchecked") private void replayPending() throws Exception {
+        Path plan = folder.resolve(".persistence/pending.yml");
+        if (Files.exists(plan)) { finishPlan(YamlFiles.read(plan)); view = null; }
+    }
 
-        long totalMillis = 0L;
-        for (PlaytimeIncrement increment : increments) {
-            totalMillis += increment.millis();
-            data.set("daily." + increment.dayKey(), data.getLong("daily." + increment.dayKey(), 0L) + increment.millis());
-            data.set("monthly." + increment.monthKey(), data.getLong("monthly." + increment.monthKey(), 0L) + increment.millis());
+    @SuppressWarnings("unchecked") private void finishPlan(Map<String, Object> plan) throws Exception {
+        for (var entry : ((Map<String, Object>) plan.get("players")).entrySet()) {
+            UUID uuid = UUID.fromString(entry.getKey());
+            YamlFiles.write(folder.resolve(uuid + ".yml"), (Map<String, Object>) entry.getValue());
         }
-
-        data.set("alltime-millis", data.getLong("alltime-millis", 0L) + totalMillis);
-        savePlayerData(uuid, data);
+        YamlFiles.write(folder.resolve(".persistence/state.yml"), (Map<String, Object>) plan.get("state"));
+        YamlFiles.writeText(folder.resolve(".persistence/receipts").resolve(UUID.fromString(plan.get("id").toString()).toString()), plan.get("hash").toString());
+        Files.delete(folder.resolve(".persistence/pending.yml"));
     }
 
-    @Override
-    public PlaytimeSnapshot getSnapshot(UUID uuid, String fallbackName, String todayKey, String monthKey) {
-        YamlConfiguration data = loadPlayerData(uuid);
-        return new PlaytimeSnapshot(
-            uuid,
-            data.getString("name", fallbackName),
-            data.getLong("daily." + todayKey, 0L),
-            data.getLong("monthly." + monthKey, 0L),
-            data.getLong("alltime-millis", 0L),
-            data.getLong("last-seen-millis", 0L)
-        );
+    static Map<String, Object> state(StorageView view) {
+        Map<String, Object> clocks = new HashMap<>();
+        view.clocks().forEach((uuid, clock) -> clocks.put(uuid.toString(),
+            Map.of("reset-millis", clock.resetMillis(), "metadata-millis", clock.metadataMillis())));
+        return Map.of("reset-millis", view.resetMillis(), "clocks", clocks);
+    }
+    @SuppressWarnings("unchecked") static Map<UUID, StorageView.PlayerClock> readClocks(Map<String, Object> state) {
+        Map<UUID, StorageView.PlayerClock> clocks = new HashMap<>();
+        ((Map<String, Object>) state.getOrDefault("clocks", Map.of())).forEach((uuid, value) -> {
+            Map<String, Object> entry = (Map<String, Object>) value;
+            clocks.put(UUID.fromString(uuid), new StorageView.PlayerClock(YamlFiles.number(entry, "reset-millis"), YamlFiles.number(entry, "metadata-millis")));
+        });
+        return clocks;
     }
 
-    @Override
-    public List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean includeHidden) {
-        File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
-        if (files == null) {
-            return List.of();
-        }
-
-        List<PlaytimeLeaderboardEntry> entries = new ArrayList<>();
-        for (File file : files) {
-            YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
-            if (!includeHidden && data.getBoolean("leaderboard-hidden", false)) {
-                continue;
-            }
-            String storedUuid = data.getString("uuid");
-            String storedName = data.getString("name", storedUuid);
-            long millis = getPeriodMillis(data, periodType, periodKey);
-            if (storedUuid != null && millis > 0L) {
-                try {
-                    entries.add(new PlaytimeLeaderboardEntry(UUID.fromString(storedUuid), storedName, millis));
-                } catch (IllegalArgumentException ignored) {
-                    // Ignore malformed data files so one bad record does not break the full leaderboard.
-                }
-            }
-        }
-
-        return entries.stream()
-            .sorted(Comparator.comparingLong(PlaytimeLeaderboardEntry::millis).reversed())
-            .limit(limit)
-            .toList();
+    /** Fixture/import utility; normal persistence always goes through apply(). */
+    public void savePlayers(Map<UUID, PlayerData> players) throws Exception {
+        for (PlayerData player : players.values()) YamlFiles.write(folder.resolve(player.uuid() + ".yml"), player.toYaml());
+        view = null;
     }
-
-    @Override
-    public List<String> getKnownPlayerNames() {
-        File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
-        if (files == null) {
-            return List.of();
-        }
-
-        List<String> names = new ArrayList<>();
-        for (File file : files) {
-            YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
-            String storedName = data.getString("name");
-            if (storedName != null && !storedName.isBlank()) {
-                names.add(storedName);
-            }
-        }
-        return names;
-    }
-
-    @Override
-    public Optional<StoredPlayer> findByName(String playerName) {
-        File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
-        if (files == null) {
-            return Optional.empty();
-        }
-
-        for (File file : files) {
-            YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
-            String storedName = data.getString("name");
-            String storedUuid = data.getString("uuid");
-            if (storedName != null && storedUuid != null && storedName.equalsIgnoreCase(playerName)) {
-                return Optional.of(new StoredPlayer(UUID.fromString(storedUuid), storedName));
-            }
-        }
-
-        return Optional.empty();
-    }
-
-    @Override
-    public void resetPlayer(UUID uuid) throws IOException {
-        YamlConfiguration data = loadPlayerData(uuid);
-        String storedUuid = data.getString("uuid", uuid.toString());
-        String storedName = data.getString("name");
-        long lastSeenMillis = data.getLong("last-seen-millis", 0L);
-        boolean leaderboardHidden = data.getBoolean("leaderboard-hidden", false);
-        data = new YamlConfiguration();
-        data.set("uuid", storedUuid);
-        if (storedName != null) {
-            data.set("name", storedName);
-        }
-        if (lastSeenMillis > 0L) {
-            data.set("last-seen-millis", lastSeenMillis);
-        }
-        data.set("leaderboard-hidden", leaderboardHidden);
-        data.set("alltime-millis", 0L);
-        savePlayerData(uuid, data);
-    }
-
-    @Override
-    public void resetAllPlayers() throws IOException {
-        File[] files = playerDataFolder.listFiles((directory, name) -> name.endsWith(".yml"));
-        if (files == null) {
-            return;
-        }
-
-        for (File file : files) {
-            YamlConfiguration data = YamlConfiguration.loadConfiguration(file);
-            String storedUuid = data.getString("uuid");
-            String storedName = data.getString("name");
-            long lastSeenMillis = data.getLong("last-seen-millis", 0L);
-            boolean leaderboardHidden = data.getBoolean("leaderboard-hidden", false);
-            YamlConfiguration resetData = new YamlConfiguration();
-            if (storedUuid != null) {
-                resetData.set("uuid", storedUuid);
-            }
-            if (storedName != null) {
-                resetData.set("name", storedName);
-            }
-            if (lastSeenMillis > 0L) {
-                resetData.set("last-seen-millis", lastSeenMillis);
-            }
-            resetData.set("leaderboard-hidden", leaderboardHidden);
-            resetData.set("alltime-millis", 0L);
-            resetData.save(file);
-        }
-    }
-
-    @Override
-    public void close() {
-    }
-
-    private YamlConfiguration loadPlayerData(UUID uuid) {
-        return YamlConfiguration.loadConfiguration(playerDataFile(uuid));
-    }
-
-    private void savePlayerData(UUID uuid, YamlConfiguration data) throws IOException {
-        data.save(playerDataFile(uuid));
-    }
-
-    private long getPeriodMillis(YamlConfiguration data, String periodType, String periodKey) {
-        return switch (periodType) {
-            case "daily" -> data.getLong("daily." + periodKey, 0L);
-            case "monthly" -> data.getLong("monthly." + periodKey, 0L);
-            case "alltime" -> data.getLong("alltime-millis", 0L);
-            default -> 0L;
-        };
-    }
-
-    private File playerDataFile(UUID uuid) {
-        return new File(playerDataFolder, uuid + ".yml");
-    }
+    @Override public void close() {}
 }

@@ -71,9 +71,41 @@ The jar is written to `build/libs/`:
 
 | Jar | Server version |
 | --- | --- |
-| `hPlaytime-1.0.6.jar` | Paper 1.19 through 1.21.11, plus 26.1 through 26.3 |
+| `hPlaytime-1.0.7.jar` | Paper 1.19 through 1.21.11, plus 26.1 through 26.3 |
 
 ## Plugin Files
+
+Storage operations run on an ordered background worker. Commands and PlaceholderAPI use memory
+caches; online durations remain live and cached leaderboards refresh every second. Configuration
+and language reloads also read files in the background.
+
+MySQL uses a small HikariCP pool. Optional settings under `storage.mysql` control pool size and
+connection, validation, socket, and query timeouts; existing configurations continue to use defaults.
+Multiple 1.0.7 servers can share a table prefix: contributions are additive and protected by durable
+operation receipts. Other servers' committed totals, names, visibility, and resets appear after
+`storage.mysql.cache-refresh-seconds` (default 5). Upgrade every writer to 1.0.7 for coordinated
+resets, keep server/database clocks synchronized, and use matching date/timezone settings.
+Events remain local to each server.
+
+Existing player tables and YAML layouts are retained. MySQL adds three InnoDB tables with the
+configured prefix: `persistence_state`, `persistence_players`, and `persistence_operations`.
+Long legacy prefixes use compact suffixes (`pt_state`, `pt_clock`, `pt_ops`) where needed to fit
+MySQL's identifier limit.
+Keep these auxiliary tables and local `data/.persistence/` metadata with backups; do not prune
+operation receipts while a recovery file could still reference them.
+
+Normal server ticks never wait for persistence. On plugin disable, hPlaytime finalizes sessions
+and waits up to `persistence.shutdown-timeout-seconds` (default 30) for accepted work to drain.
+Failed or unverified writes retain `recovery-*.yml` checkpoints for replay on startup; do not delete
+these files. An independent recovery writer stages the final shutdown snapshot even while the
+database worker is blocked. A JVM shutdown hook waits for that checkpoint after a disable deadline
+or interruption. Hard process kills, disk failure, or an oversized checkpoint cannot guarantee
+durability. Reads and writes enforce the same 64-million-code-point YAML limit and reject oversized
+replacements before changing the previous checkpoint. `.persistence.lock` prevents two instances
+writing the same local data folder.
+
+See [the performance investigation](docs/performance-overhaul.md) for ordering guarantees,
+tests, and remaining validation requirements.
 
 hPlaytime creates this folder:
 

@@ -10,6 +10,15 @@ storage:
     password: ""
     use-ssl: false
     table-prefix: hplaytime_
+    # Persistence is serial; a small pool is sufficient. Values are clamped to safe bounds.
+    maximum-pool-size: 2
+    connection-timeout-millis: 3000
+    validation-timeout-millis: 1000
+    connect-timeout-millis: 3000
+    socket-timeout-millis: 5000
+    query-timeout-seconds: 5
+    # Other servers' committed changes appear after this asynchronous refresh (1-60 seconds).
+    cache-refresh-seconds: 5
 
 date-format:
   # Use "system" for the machine/server timezone, or an ID like America/Chicago.
@@ -53,3 +62,8 @@ afk:
     - afk
 
 flush-interval-seconds: 60
+
+persistence:
+  retry-interval-seconds: 5
+  # Only plugin disable waits, to drain accepted writes. Normal ticks never wait for I/O.
+  shutdown-timeout-seconds: 30

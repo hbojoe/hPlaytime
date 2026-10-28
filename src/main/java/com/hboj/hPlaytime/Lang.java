@@ -1,16 +1,15 @@
 package com.hboj.hPlaytime;
 
-import java.io.File;
 import java.util.Collections;
 import java.util.Map;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.command.CommandSender;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 
 public final class Lang {
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
     private static final Map<String, String> DEFAULT_MESSAGES = Map.of(
+        "storage-busy", "%prefix%&eStorage is busy or reloading. Please try again shortly.",
+        "persistence-pending", "%prefix%&eThe change is queued; storage failed and will be retried. Check the console.",
         "playtime-last-seen", "&7Last seen: &f%lastseen%",
         "leaderboard-header", "%prefix%&aTop 10 Playtime - &f%period%",
         "leaderboard-entry", "&7#%rank% &f%player% &8- &a%time%",
@@ -18,17 +17,14 @@ public final class Lang {
     );
 
     private final HPlaytime plugin;
-    private FileConfiguration messages;
+    private SettingsReader messages;
 
-    public Lang(HPlaytime plugin) {
+    public Lang(HPlaytime plugin, Map<String, Object> messages) {
         this.plugin = plugin;
-        reload();
+        this.messages = new SettingsReader(messages);
     }
 
-    public void reload() {
-        File file = new File(plugin.getDataFolder(), "lang.yml");
-        messages = YamlConfiguration.loadConfiguration(file);
-    }
+    public void reload(Map<String, Object> messages) { this.messages = new SettingsReader(messages); }
 
     public void send(CommandSender sender, String key) {
         send(sender, key, Collections.emptyMap());

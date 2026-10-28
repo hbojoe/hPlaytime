@@ -1,32 +1,13 @@
 package com.hboj.hPlaytime;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 
+/** Worker-confined persistence. Stable operations are applied exactly once, including resets. */
 public interface PlaytimeStorage extends AutoCloseable {
     void initialize() throws Exception;
-
-    void updateName(UUID uuid, String playerName) throws Exception;
-
-    void updateLeaderboardHidden(UUID uuid, String playerName, boolean hidden) throws Exception;
-
-    void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) throws Exception;
-
-    void addPlaytime(UUID uuid, String playerName, List<PlaytimeIncrement> increments) throws Exception;
-
-    PlaytimeSnapshot getSnapshot(UUID uuid, String fallbackName, String todayKey, String monthKey) throws Exception;
-
-    List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean includeHidden) throws Exception;
-
-    List<String> getKnownPlayerNames() throws Exception;
-
-    Optional<StoredPlayer> findByName(String playerName) throws Exception;
-
-    void resetPlayer(UUID uuid) throws Exception;
-
-    void resetAllPlayers() throws Exception;
-
-    @Override
-    void close() throws Exception;
+    StorageView loadView() throws Exception;
+    default Map<UUID, PlayerData> loadPlayers() throws Exception { return loadView().players(); }
+    void apply(StorageMutation mutation) throws Exception;
+    @Override void close() throws Exception;
 }

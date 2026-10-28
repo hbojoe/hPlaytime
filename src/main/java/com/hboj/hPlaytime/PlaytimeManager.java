@@ -1,433 +1,224 @@
 package com.hboj.hPlaytime;
 
-import java.io.File;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
-import java.util.logging.Level;
+import java.util.function.LongSupplier;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
+/** Main-thread session accounting and operation outbox; placeholders read immutable publications. */
 public final class PlaytimeManager {
     public static final String LEADERBOARD_HIDE_PERMISSION = "hplaytime.leaderboard.hide";
-
     private final HPlaytime plugin;
     private final EventManager eventManager;
-    private final Map<UUID, ActiveSession> activeSessions = new HashMap<>();
-    private PluginSettings settings;
-    private PlaytimeStorage storage;
+    private final PlayerCache cache = new PlayerCache();
+    private final Map<UUID, ActiveSession> sessions = new HashMap<>();
+    private final MutationBuffer outbox = new MutationBuffer();
+    private final LongSupplier clock;
+    private StorageView base, projected;
+    private volatile PluginSettings settings;
+    private volatile Map<UUID, LiveSession> live = Map.of();
 
-    public PlaytimeManager(HPlaytime plugin, PluginSettings settings, EventManager eventManager) throws Exception {
-        this.plugin = plugin;
-        this.eventManager = eventManager;
-        reload(settings);
+    public PlaytimeManager(HPlaytime plugin, PluginSettings settings, EventManager events, StorageView stored) {
+        this(plugin, settings, events, stored, System::currentTimeMillis);
+    }
+    PlaytimeManager(HPlaytime plugin, PluginSettings settings, EventManager events, Map<UUID, PlayerData> stored, LongSupplier clock) {
+        this(plugin, settings, events, new StorageView(stored, 0, Map.of()), clock);
+    }
+    PlaytimeManager(HPlaytime plugin, PluginSettings settings, EventManager events, StorageView stored, LongSupplier clock) {
+        this.plugin = plugin; this.settings = settings; this.eventManager = events; this.clock = clock;
+        base = projected = stored; updatePeriods(); cache.replace(stored.players());
+    }
+
+    private void updatePeriods() {
+        ZonedDateTime now = Instant.ofEpochMilli(clock.getAsLong()).atZone(settings.zoneId());
+        cache.periods(settings.dailyFormatter().format(now), settings.monthlyFormatter().format(now));
+    }
+    private void change(UUID uuid, StorageMutation.Change change) {
+        outbox.add(uuid, change);
+        PlayerData before = cache.get(uuid, change.name());
+        cache.put(change.apply(uuid, before, projected.cutoff(uuid), 0));
     }
 
     public void startTracking(Player player) {
-        long now = System.currentTimeMillis();
-        activeSessions.put(player.getUniqueId(), new ActiveSession(now, player.getWorld().getName()));
-        updateStoredName(player.getUniqueId(), player.getName());
-        updateLeaderboardHidden(player);
+        UUID uuid = player.getUniqueId();
+        if (sessions.containsKey(uuid)) return;
+        long now = clock.getAsLong();
+        sessions.put(uuid, new ActiveSession(now, player.getWorld().getName(), player.getName()));
+        // A fresh join is authoritative metadata, even if a stale shared cache happens to match it.
+        change(uuid, new StorageMutation.Change(player.getName(), player.hasPermission(LEADERBOARD_HIDE_PERMISSION), now, 0, List.of()));
+        publishLive(); plugin.requestSave();
     }
-
     public void stopTracking(Player player) {
         flushPlayer(player);
-        updateLastSeen(player.getUniqueId(), player.getName(), System.currentTimeMillis());
-        activeSessions.remove(player.getUniqueId());
+        UUID uuid = player.getUniqueId();
+        change(uuid, new StorageMutation.Change(player.getName(), cache.get(uuid, player.getName()).hidden(), 0, clock.getAsLong(), List.of()));
+        sessions.remove(uuid); publishLive(); plugin.requestSave();
     }
-
-    public void stopTrackingAll() {
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            stopTracking(player);
-        }
-    }
-
+    public void stopTrackingAll() { for (Player player : plugin.getServer().getOnlinePlayers()) stopTracking(player); }
     public void flushOnlinePlayers() {
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            flushPlayer(player);
-        }
+        updatePeriods();
+        for (Player player : plugin.getServer().getOnlinePlayers()) flushPlayer(player);
+        cache.publish(); publishLive();
     }
-
-    public void flushAll() {
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            flushPlayer(player);
-        }
-    }
-
+    public void flushAll() { flushOnlinePlayers(); }
     public void handleActivity(Player player) {
-        ActiveSession activeSession = activeSessions.get(player.getUniqueId());
-        if (activeSession == null) {
-            startTracking(player);
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (settings.afkEnabled() && now - activeSession.lastActivityMillis() > settings.afkTimeoutMillis()) {
-            flushPlayer(player);
-        }
-
-        activeSession.setLastActivityMillis(now);
+        ActiveSession session = sessions.get(player.getUniqueId());
+        if (session == null) { startTracking(player); return; }
+        long now = clock.getAsLong();
+        if (settings.afkEnabled() && now - session.lastActivity > settings.afkTimeoutMillis()) flushPlayer(player);
+        session.lastActivity = now;
     }
-
     public void handleWorldChange(Player player, World previousWorld) {
-        ActiveSession activeSession = activeSessions.get(player.getUniqueId());
-        if (activeSession == null) {
-            startTracking(player);
-            return;
-        }
-
+        ActiveSession session = sessions.get(player.getUniqueId());
+        if (session == null) { startTracking(player); return; }
         flushPlayer(player.getUniqueId(), player.getName(), previousWorld.getName());
-        long now = System.currentTimeMillis();
-        activeSession.setCurrentWorldName(player.getWorld().getName());
-        activeSession.setLastActivityMillis(now);
+        session.world = player.getWorld().getName(); session.lastActivity = clock.getAsLong(); publishLive();
     }
 
-    public PlaytimeSnapshot getSnapshot(UUID uuid, String fallbackName) {
-        Player onlinePlayer = plugin.getServer().getPlayer(uuid);
-        if (onlinePlayer != null) {
-            flushPlayer(onlinePlayer);
+    public PlaytimeSnapshot getSnapshot(UUID uuid, String name) {
+        updatePeriods(); Player player = plugin.getServer().getPlayer(uuid);
+        if (player != null) flushPlayer(player);
+        cache.publish(); publishLive(); return cache.snapshot(uuid, name);
+    }
+    public PlaytimeSnapshot getLiveSnapshot(UUID uuid, String fallback) {
+        LiveSession session = live.get(uuid);
+        if (session == null) return cache.snapshot(uuid, fallback);
+        long end = session.afk ? Math.min(clock.getAsLong(), session.lastActivity + session.timeout) : clock.getAsLong();
+        ZonedDateTime now = Instant.ofEpochMilli(clock.getAsLong()).atZone(session.settings.zoneId());
+        String day = session.settings.dailyFormatter().format(now), month = session.settings.monthlyFormatter().format(now);
+        PlaytimeSnapshot snapshot = session.data.snapshot(day, month);
+        long today = snapshot.todayMillis(), monthly = snapshot.monthMillis(), total = snapshot.alltimeMillis();
+        for (TimeSlice slice : slices(session.lastFlush, end, session.world, session.settings)) {
+            long millis = slice.millisAfter(session.cutoff);
+            if (slice.day().equals(day)) today += millis;
+            if (slice.month().equals(month)) monthly += millis;
+            total += millis;
         }
-
-        return loadSnapshot(uuid, fallbackName, false);
+        return new PlaytimeSnapshot(uuid, session.data.name(), today, monthly, total, session.data.lastSeen());
     }
 
-    public PlaytimeSnapshot getLiveSnapshot(UUID uuid, String fallbackName) {
-        return loadSnapshot(uuid, fallbackName, true);
+    private List<PlaytimeLeaderboardEntry> top(String type, int limit, boolean account) {
+        if (account) flushOnlinePlayers(); return cache.top(type, limit);
     }
-
-    private PlaytimeSnapshot loadSnapshot(UUID uuid, String fallbackName, boolean includeActiveSession) {
-        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
-        String todayKey = settings.dailyFormatter().format(now);
-        String monthKey = settings.monthlyFormatter().format(now);
-
-        try {
-            PlaytimeSnapshot snapshot = storage.getSnapshot(uuid, fallbackName, todayKey, monthKey);
-            if (includeActiveSession) {
-                return includeActiveSession(snapshot, todayKey, monthKey);
-            }
-            return snapshot;
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not load playtime for " + fallbackName, exception);
-            return new PlaytimeSnapshot(uuid, fallbackName, 0L, 0L, 0L, 0L);
-        }
-    }
-
-    public List<PlaytimeLeaderboardEntry> getTopDay(int limit) {
-        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
-        return getTop("daily", settings.dailyFormatter().format(now), limit, true);
-    }
-
-    public List<PlaytimeLeaderboardEntry> getTopMonth(int limit) {
-        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
-        return getTop("monthly", settings.monthlyFormatter().format(now), limit, true);
-    }
-
-    public List<PlaytimeLeaderboardEntry> getTopAllTime(int limit) {
-        return getTop("alltime", "all", limit, true);
-    }
-
-    public List<PlaytimeLeaderboardEntry> getStoredTopDay(int limit) {
-        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
-        return getTop("daily", settings.dailyFormatter().format(now), limit, false);
-    }
-
-    public List<PlaytimeLeaderboardEntry> getStoredTopMonth(int limit) {
-        ZonedDateTime now = ZonedDateTime.now(settings.zoneId());
-        return getTop("monthly", settings.monthlyFormatter().format(now), limit, false);
-    }
-
-    public List<PlaytimeLeaderboardEntry> getStoredTopAllTime(int limit) {
-        return getTop("alltime", "all", limit, false);
-    }
-
-    public Optional<StoredPlayer> findStoredPlayer(String playerName) {
-        try {
-            return storage.findByName(playerName);
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not search playtime data for " + playerName, exception);
-            return Optional.empty();
-        }
-    }
-
-    public List<String> getKnownPlayerNames() {
-        try {
-            return storage.getKnownPlayerNames();
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not load known playtime player names.", exception);
-            return List.of();
-        }
-    }
-
-    private List<PlaytimeLeaderboardEntry> getTop(String periodType, String periodKey, int limit, boolean flushOnlinePlayers) {
-        if (flushOnlinePlayers) {
-            flushOnlinePlayers();
-        }
-        try {
-            return storage.getTop(periodType, periodKey, limit, false);
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not load playtime leaderboard.", exception);
-            return List.of();
-        }
-    }
-
-    public void reload(PluginSettings newSettings) throws Exception {
-        flushAll();
-
-        PlaytimeStorage newStorage = createStorage(newSettings);
-        newStorage.initialize();
-
-        PlaytimeStorage oldStorage = storage;
-        settings = newSettings;
-        storage = newStorage;
-        if (oldStorage != null) {
-            oldStorage.close();
-        }
-
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            activeSessions.put(player.getUniqueId(), new ActiveSession(System.currentTimeMillis(), player.getWorld().getName()));
-            updateStoredName(player.getUniqueId(), player.getName());
-            updateLeaderboardHidden(player);
-        }
-    }
-
-    public void close() {
-        try {
-            if (storage != null) {
-                storage.close();
-            }
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.WARNING, "Could not close playtime storage.", exception);
-        }
-    }
-
-    public TimeFormatter.Settings timeFormatterSettings() {
-        return settings.timeFormatterSettings();
-    }
-
-    public boolean lastSeenEnabled() {
-        return settings.lastSeenEnabled();
-    }
-
-    public String formatLastSeen(long lastSeenMillis) {
-        return settings.lastSeenFormatter().format(Instant.ofEpochMilli(lastSeenMillis).atZone(settings.zoneId()));
-    }
+    public List<PlaytimeLeaderboardEntry> getTopDay(int limit) { return top("daily", limit, true); }
+    public List<PlaytimeLeaderboardEntry> getTopMonth(int limit) { return top("monthly", limit, true); }
+    public List<PlaytimeLeaderboardEntry> getTopAllTime(int limit) { return top("alltime", limit, true); }
+    public List<PlaytimeLeaderboardEntry> getStoredTopDay(int limit) { return top("daily", limit, false); }
+    public List<PlaytimeLeaderboardEntry> getStoredTopMonth(int limit) { return top("monthly", limit, false); }
+    public List<PlaytimeLeaderboardEntry> getStoredTopAllTime(int limit) { return top("alltime", limit, false); }
+    public Optional<StoredPlayer> findStoredPlayer(String name) { return cache.find(name); }
+    public List<String> getKnownPlayerNames() { return cache.names(); }
+    public TimeFormatter.Settings timeFormatterSettings() { return settings.timeFormatterSettings(); }
+    public boolean lastSeenEnabled() { return settings.lastSeenEnabled(); }
+    public String formatLastSeen(long millis) { return settings.lastSeenFormatter().format(Instant.ofEpochMilli(millis).atZone(settings.zoneId())); }
+    public boolean isOnline(UUID uuid) { return live.containsKey(uuid); }
 
     private void flushPlayer(Player player) {
-        ActiveSession activeSession = activeSessions.get(player.getUniqueId());
-        if (activeSession != null) {
-            updateLeaderboardHidden(player);
+        UUID uuid = player.getUniqueId(); ActiveSession session = sessions.get(uuid);
+        if (session == null) return;
+        PlayerData stored = cache.get(uuid, player.getName());
+        boolean hidden = player.hasPermission(LEADERBOARD_HIDE_PERMISSION);
+        if (!stored.name().equals(player.getName()) || stored.hidden() != hidden) {
+            change(uuid, new StorageMutation.Change(player.getName(), hidden, clock.getAsLong(), 0, List.of()));
+            plugin.requestSave();
         }
-        String worldName = activeSession == null ? player.getWorld().getName() : activeSession.currentWorldName();
-        flushPlayer(player.getUniqueId(), player.getName(), worldName);
+        flushPlayer(uuid, player.getName(), session.world);
+    }
+    private void flushPlayer(UUID uuid, String name, String world) {
+        ActiveSession session = sessions.get(uuid); if (session == null) return;
+        long now = clock.getAsLong();
+        long end = settings.afkEnabled() ? Math.min(now, session.lastActivity + settings.afkTimeoutMillis()) : now;
+        List<TimeSlice> slices = slices(session.lastFlush, end, world, settings);
+        if (!slices.isEmpty()) {
+            change(uuid, new StorageMutation.Change(name, cache.get(uuid, name).hidden(), 0, 0, slices));
+            // Main playtime resets do not reset independent event competitions.
+            eventManager.addPlaytime(uuid, name, session.lastFlush, end);
+        }
+        session.lastFlush = Math.max(now, session.lastFlush);
     }
 
-    private void flushPlayer(UUID uuid, String playerName, String worldName) {
-        ActiveSession activeSession = activeSessions.get(uuid);
-        if (activeSession == null) {
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (now <= activeSession.lastFlushMillis()) {
-            return;
-        }
-
-        try {
-            long eligibleEndMillis = eligibleEndMillis(activeSession, now);
-            List<PlaytimeIncrement> increments = createIncrements(activeSession, worldName, eligibleEndMillis);
-            storage.addPlaytime(uuid, playerName, increments);
-            if (!increments.isEmpty()) {
-                eventManager.addPlaytime(uuid, playerName, activeSession.lastFlushMillis(), eligibleEndMillis);
-            }
-            activeSession.setLastFlushMillis(now);
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save playtime for " + playerName, exception);
-        }
+    public boolean resetPlayer(UUID uuid, String name) {
+        Player player = plugin.getServer().getPlayer(uuid); if (player != null) flushPlayer(player);
+        long now = clock.getAsLong(); outbox.reset(uuid, now);
+        ActiveSession session = sessions.get(uuid); if (session != null) session.lastFlush = session.lastActivity = now;
+        refresh(new PersistenceService.Update(base, Set.of(uuid))); plugin.requestSave(); return true;
     }
-
-    public boolean resetPlayer(UUID uuid, String playerName) {
-        Player onlinePlayer = plugin.getServer().getPlayer(uuid);
-        if (onlinePlayer != null) {
-            flushPlayer(onlinePlayer);
-        }
-
-        try {
-            storage.resetPlayer(uuid);
-            ActiveSession activeSession = activeSessions.get(uuid);
-            if (activeSession != null) {
-                long now = System.currentTimeMillis();
-                activeSession.setLastFlushMillis(now);
-                activeSession.setLastActivityMillis(now);
-            }
-            return true;
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not reset playtime for " + playerName, exception);
-            return false;
-        }
-    }
-
     public boolean resetAllPlayers() {
-        flushAll();
-        try {
-            storage.resetAllPlayers();
-            long now = System.currentTimeMillis();
-            for (ActiveSession activeSession : activeSessions.values()) {
-                activeSession.setLastFlushMillis(now);
-                activeSession.setLastActivityMillis(now);
-            }
-            return true;
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not reset all playtime.", exception);
-            return false;
-        }
+        flushOnlinePlayers(); long now = clock.getAsLong(); outbox.reset(null, now);
+        sessions.values().forEach(session -> { session.lastFlush = now; session.lastActivity = now; });
+        refresh(new PersistenceService.Update(base, base.players().keySet())); plugin.requestSave(); return true;
     }
 
-    private void updateStoredName(UUID uuid, String playerName) {
-        try {
-            storage.updateName(uuid, playerName);
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not update playtime name for " + playerName, exception);
-        }
+    List<StorageMutation> capture() { return outbox.capture(); }
+    List<StorageMutation> captureShutdown() { return outbox.captureShutdown(); }
+    List<StorageMutation> recoverySnapshot() { return outbox.recoverySnapshot(); }
+    boolean dirty() { return outbox.dirty(); }
+    boolean uncertain() { return outbox.uncertain(); }
+    Map<UUID, PlayerData> records() { return cache.copy(); }
+    Map<UUID, PlayerData> pending() {
+        Map<UUID, PlayerData> result = new HashMap<>();
+        for (UUID uuid : outbox.affected(cache.copy().keySet())) result.put(uuid, cache.get(uuid, uuid.toString()));
+        return Map.copyOf(result);
     }
 
-    private void updateLeaderboardHidden(Player player) {
-        try {
-            storage.updateLeaderboardHidden(
-                player.getUniqueId(),
-                player.getName(),
-                player.hasPermission(LEADERBOARD_HIDE_PERMISSION)
-            );
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not update leaderboard visibility for " + player.getName(), exception);
+    void acknowledge(List<StorageMutation> mutations, PersistenceService.Update update) {
+        Set<UUID> changed = outbox.acknowledge(mutations, base.players().keySet());
+        changed.addAll(update.changed()); refresh(new PersistenceService.Update(update.view(), changed));
+    }
+    void refresh(PersistenceService.Update update) {
+        base = update.view(); projected = outbox.project(base);
+        Set<UUID> affected = new HashSet<>(update.changed()); affected.addAll(outbox.affected(projected.players().keySet()));
+        for (UUID uuid : affected) {
+            PlayerData record = projected.players().get(uuid);
+            if (record == null) cache.remove(uuid);
+            else if (!record.equals(cache.get(uuid, record.name())) || !cache.contains(uuid)) cache.put(record);
         }
+        updatePeriods(); cache.publish(); publishLive();
+    }
+    void applyReload(PluginSettings next, StorageView target) {
+        settings = next;
+        base = target; projected = outbox.project(base);
+        updatePeriods(); cache.replace(projected.players()); publishLive();
     }
 
-    private void updateLastSeen(UUID uuid, String playerName, long lastSeenMillis) {
-        try {
-            storage.updateLastSeen(uuid, playerName, lastSeenMillis);
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not update last seen for " + playerName, exception);
-        }
+    private void publishLive() {
+        Map<UUID, LiveSession> result = new HashMap<>();
+        sessions.forEach((uuid, session) -> result.put(uuid, new LiveSession(cache.get(uuid, session.name),
+            session.lastFlush, session.lastActivity, session.world, projected.cutoff(uuid),
+            settings.afkEnabled(), settings.afkTimeoutMillis(), settings)));
+        live = Map.copyOf(result);
     }
 
-    private PlaytimeSnapshot includeActiveSession(PlaytimeSnapshot snapshot, String todayKey, String monthKey) {
-        ActiveSession activeSession = activeSessions.get(snapshot.playerUuid());
-        if (activeSession == null) {
-            return snapshot;
+    static List<TimeSlice> slices(long start, long end, String world, PluginSettings settings) {
+        if (end <= start || settings.isAfkWorld(world)) return List.of();
+        List<TimeSlice> result = new ArrayList<>();
+        ZonedDateTime cursor = Instant.ofEpochMilli(start).atZone(settings.zoneId()), until = Instant.ofEpochMilli(end).atZone(settings.zoneId());
+        while (cursor.isBefore(until)) {
+            ZonedDateTime next = cursor.toLocalDate().plusDays(1).atStartOfDay(settings.zoneId());
+            ZonedDateTime segment = until.isBefore(next) ? until : next;
+            result.add(new TimeSlice(cursor.toInstant().toEpochMilli(), segment.toInstant().toEpochMilli(),
+                settings.dailyFormatter().format(cursor), settings.monthlyFormatter().format(cursor)));
+            cursor = segment;
         }
-
-        long eligibleEndMillis = eligibleEndMillis(activeSession, System.currentTimeMillis());
-        List<PlaytimeIncrement> increments = createIncrements(activeSession, activeSession.currentWorldName(), eligibleEndMillis);
-        if (increments.isEmpty()) {
-            return snapshot;
-        }
-
-        long todayMillis = 0L;
-        long monthMillis = 0L;
-        long alltimeMillis = 0L;
-        for (PlaytimeIncrement increment : increments) {
-            if (increment.dayKey().equals(todayKey)) {
-                todayMillis += increment.millis();
-            }
-            if (increment.monthKey().equals(monthKey)) {
-                monthMillis += increment.millis();
-            }
-            alltimeMillis += increment.millis();
-        }
-
-        return new PlaytimeSnapshot(
-            snapshot.playerUuid(),
-            snapshot.playerName(),
-            snapshot.todayMillis() + todayMillis,
-            snapshot.monthMillis() + monthMillis,
-            snapshot.alltimeMillis() + alltimeMillis,
-            snapshot.lastSeenMillis()
-        );
+        return List.copyOf(result);
     }
-
-    private long eligibleEndMillis(ActiveSession activeSession, long now) {
-        if (!settings.afkEnabled()) {
-            return now;
-        }
-
-        return Math.min(now, activeSession.lastActivityMillis() + settings.afkTimeoutMillis());
+    static List<PlaytimeIncrement> increments(long start, long end, String world, PluginSettings settings) {
+        return slices(start, end, world, settings).stream()
+            .map(slice -> new PlaytimeIncrement(slice.day(), slice.month(), slice.to() - slice.from())).toList();
     }
-
-    private List<PlaytimeIncrement> createIncrements(ActiveSession activeSession, String worldName, long eligibleEndMillis) {
-        if (settings.isAfkWorld(worldName)) {
-            return List.of();
-        }
-
-        if (eligibleEndMillis <= activeSession.lastFlushMillis()) {
-            return List.of();
-        }
-
-        List<PlaytimeIncrement> increments = new ArrayList<>();
-        ZonedDateTime cursor = Instant.ofEpochMilli(activeSession.lastFlushMillis()).atZone(settings.zoneId());
-        ZonedDateTime end = Instant.ofEpochMilli(eligibleEndMillis).atZone(settings.zoneId());
-
-        while (cursor.isBefore(end)) {
-            ZonedDateTime nextDay = cursor.toLocalDate().plusDays(1).atStartOfDay(settings.zoneId());
-            ZonedDateTime segmentEnd = end.isBefore(nextDay) ? end : nextDay;
-            long segmentMillis = segmentEnd.toInstant().toEpochMilli() - cursor.toInstant().toEpochMilli();
-
-            increments.add(new PlaytimeIncrement(
-                settings.dailyFormatter().format(cursor),
-                settings.monthlyFormatter().format(cursor),
-                segmentMillis
-            ));
-
-            cursor = segmentEnd;
-        }
-
-        return increments;
-    }
-
-    private PlaytimeStorage createStorage(PluginSettings settings) {
-        if (settings.storageType() == PluginSettings.StorageType.MYSQL) {
-            return new MysqlPlaytimeStorage(settings.mysqlSettings());
-        }
-        return new LocalPlaytimeStorage(new File(plugin.getDataFolder(), "data"));
-    }
-
     private static final class ActiveSession {
-        private long lastFlushMillis;
-        private long lastActivityMillis;
-        private String currentWorldName;
-
-        private ActiveSession(long lastFlushMillis, String currentWorldName) {
-            this.lastFlushMillis = lastFlushMillis;
-            this.lastActivityMillis = lastFlushMillis;
-            this.currentWorldName = currentWorldName;
-        }
-
-        private long lastFlushMillis() {
-            return lastFlushMillis;
-        }
-
-        private void setLastFlushMillis(long lastFlushMillis) {
-            this.lastFlushMillis = lastFlushMillis;
-        }
-
-        private long lastActivityMillis() {
-            return lastActivityMillis;
-        }
-
-        private void setLastActivityMillis(long lastActivityMillis) {
-            this.lastActivityMillis = lastActivityMillis;
-        }
-
-        private String currentWorldName() {
-            return currentWorldName;
-        }
-
-        private void setCurrentWorldName(String currentWorldName) {
-            this.currentWorldName = currentWorldName;
-        }
+        long lastFlush, lastActivity; String world; final String name;
+        ActiveSession(long now, String world, String name) { lastFlush = now; lastActivity = now; this.world = world; this.name = name; }
     }
+    private record LiveSession(PlayerData data, long lastFlush, long lastActivity, String world, long cutoff,
+                               boolean afk, long timeout, PluginSettings settings) {}
 }

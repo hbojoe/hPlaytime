@@ -8,7 +8,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -49,17 +48,7 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
-            lang.reload();
-            try {
-                PluginSettings settings = PluginSettings.load(plugin);
-                playtimeManager.reload(settings);
-                plugin.startFlushTask(settings);
-            } catch (Exception exception) {
-                plugin.getLogger().severe("Could not reload hPlaytime storage: " + exception.getMessage());
-                lang.send(sender, "reload-failed");
-                return true;
-            }
-            lang.send(sender, "reloaded");
+            plugin.reloadSettings(success -> lang.send(sender, success ? "reloaded" : "reload-failed"));
             return true;
         }
 
@@ -152,9 +141,13 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
+            if (!canMutate(sender)) return true;
             EventManager.CreateResult result = eventManager.create(args[1], args[2]);
             switch (result) {
-                case CREATED -> lang.send(sender, "event-created", Map.of("event", args[1], "duration", args[2]));
+                case CREATED -> plugin.afterSave(success -> {
+                    if (success) lang.send(sender, "event-created", Map.of("event", args[1], "duration", args[2]));
+                    else lang.send(sender, "persistence-pending");
+                });
                 case INVALID_NAME -> lang.send(sender, "event-invalid-name");
                 case INVALID_DURATION -> lang.send(sender, "event-invalid-duration");
                 case ALREADY_EXISTS -> lang.send(sender, "event-already-exists", Map.of("event", args[1]));
@@ -172,6 +165,8 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
+            if (!canMutate(sender)) return true;
+            playtimeManager.flushOnlinePlayers();
             EventManager.ActionResult result = eventManager.end(args[1]);
             sendEventActionResult(sender, result, "event-ended-manual", args[1]);
             return true;
@@ -183,6 +178,8 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
+            if (!canMutate(sender)) return true;
+            playtimeManager.flushOnlinePlayers();
             EventManager.ActionResult result = eventManager.delete(args[1]);
             sendEventActionResult(sender, result, "event-deleted", args[1]);
             return true;
@@ -209,6 +206,8 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        if (!canMutate(sender)) return true;
+        playtimeManager.flushOnlinePlayers();
         EventManager.ActionResult result = eventManager.start(eventName);
         sendEventActionResult(sender, result, "event-started", eventName);
         return true;
@@ -216,11 +215,20 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
 
     private void sendEventActionResult(CommandSender sender, EventManager.ActionResult result, String successKey, String eventName) {
         switch (result) {
-            case OK -> lang.send(sender, successKey, Map.of("event", eventName));
+            case OK -> plugin.afterSave(success -> {
+                if (success) lang.send(sender, successKey, Map.of("event", eventName));
+                else lang.send(sender, "persistence-pending");
+            });
             case NOT_FOUND -> lang.send(sender, "event-not-found", Map.of("event", eventName));
             case ALREADY_ACTIVE -> lang.send(sender, "event-already-active", Map.of("event", eventName));
             case NOT_ACTIVE -> lang.send(sender, "event-not-active", Map.of("event", eventName));
         }
+    }
+
+    private boolean canMutate(CommandSender sender) {
+        if (plugin.acceptsMutation()) return true;
+        lang.send(sender, "storage-busy");
+        return false;
     }
 
     private boolean resetPlayer(CommandSender sender, String playerName) {
@@ -235,11 +243,9 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (playtimeManager.resetPlayer(target.uuid(), target.name())) {
-            lang.send(sender, "reset-player", Map.of("player", target.name()));
-        } else {
-            lang.send(sender, "reset-failed", Map.of("player", target.name()));
-        }
+        if (!canMutate(sender)) return true;
+        playtimeManager.resetPlayer(target.uuid(), target.name());
+        plugin.afterSave(success -> lang.send(sender, success ? "reset-player" : "persistence-pending", Map.of("player", target.name())));
         return true;
     }
 
@@ -249,11 +255,9 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (playtimeManager.resetAllPlayers()) {
-            lang.send(sender, "reset-all");
-        } else {
-            lang.send(sender, "reset-all-failed");
-        }
+        if (!canMutate(sender)) return true;
+        playtimeManager.resetAllPlayers();
+        plugin.afterSave(success -> lang.send(sender, success ? "reset-all" : "persistence-pending"));
         return true;
     }
 
@@ -261,11 +265,6 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
         Player onlinePlayer = plugin.getServer().getPlayerExact(name);
         if (onlinePlayer != null) {
             return new StoredPlayer(onlinePlayer.getUniqueId(), onlinePlayer.getName());
-        }
-
-        OfflinePlayer offlinePlayer = plugin.getServer().getOfflinePlayer(name);
-        if (offlinePlayer.hasPlayedBefore()) {
-            return new StoredPlayer(offlinePlayer.getUniqueId(), offlinePlayer.getName());
         }
 
         return playtimeManager.findStoredPlayer(name).orElse(null);
@@ -499,12 +498,6 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
 
         if (includeOffline) {
             names.addAll(playtimeManager.getKnownPlayerNames());
-            for (OfflinePlayer offlinePlayer : plugin.getServer().getOfflinePlayers()) {
-                String name = offlinePlayer.getName();
-                if (name != null && offlinePlayer.hasPlayedBefore()) {
-                    names.add(name);
-                }
-            }
         }
 
         return new ArrayList<>(names);
